@@ -1,6 +1,7 @@
 from google.genai import types
 from pi.ai.base import BaseChat, ToolCall, ToolResult, ToolDefinition
 from pi.ai.client import get_client
+from pi.session import Message
 
 MODEL = "gemini-3-flash-preview"
 
@@ -28,7 +29,7 @@ def _to_gemini_schema(schema: dict) -> types.Schema:
 
 
 class GeminiChat(BaseChat):
-    def __init__(self, system_prompt: str, tools: list[ToolDefinition]):
+    def __init__(self, system_prompt: str, tools: list[ToolDefinition], history: list[Message]):
         client = get_client()
         declarations = [
             types.FunctionDeclaration(
@@ -38,12 +39,22 @@ class GeminiChat(BaseChat):
             )
             for t in tools
         ]
+        # Gemini uses "model" for assistant role
+        role_map = {"user": "user", "assistant": "model"}
+        gemini_history = [
+            types.Content(
+                role=role_map.get(msg.role, msg.role),
+                parts=[types.Part.from_text(text=msg.content)],
+            )
+            for msg in history
+        ]
         self._chat = client.chats.create(
             model=MODEL,
             config=types.GenerateContentConfig(
                 system_instruction=system_prompt,
                 tools=[types.Tool(function_declarations=declarations)] if declarations else [],
             ),
+            history=gemini_history,
         )
 
     def send(self, message: str | list[ToolResult]) -> tuple[str, list[ToolCall]]:

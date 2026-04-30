@@ -2,12 +2,13 @@ import json
 import os
 from openai import OpenAI
 from pi.ai.base import BaseChat, ToolCall, ToolResult, ToolDefinition
+from pi.session import Message
 
 MODEL = "gpt-4o-mini"
 
 
 class OpenAIChat(BaseChat):
-    def __init__(self, system_prompt: str, tools: list[ToolDefinition]):
+    def __init__(self, system_prompt: str, tools: list[ToolDefinition], history: list[Message]):
         self._client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         self._model = MODEL
         self._tools = [
@@ -22,6 +23,8 @@ class OpenAIChat(BaseChat):
             for t in tools
         ]
         self._messages: list[dict] = [{"role": "system", "content": system_prompt}]
+        for msg in history:
+            self._messages.append({"role": msg.role, "content": msg.content})
 
     def send(self, message: str | list[ToolResult]) -> tuple[str, list[ToolCall]]:
         if isinstance(message, str):
