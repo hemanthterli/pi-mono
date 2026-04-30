@@ -29,7 +29,7 @@ def _to_gemini_schema(schema: dict) -> types.Schema:
 
 
 class GeminiChat(BaseChat):
-    def __init__(self, system_prompt: str, tools: list[ToolDefinition], history: list[Message]):
+    def __init__(self, system_prompt: str, tools: list[ToolDefinition], history: list[Message], model: str | None = None):
         client = get_client()
         declarations = [
             types.FunctionDeclaration(
@@ -49,7 +49,7 @@ class GeminiChat(BaseChat):
             for msg in history
         ]
         self._chat = client.chats.create(
-            model=MODEL,
+            model=model or MODEL,
             config=types.GenerateContentConfig(
                 system_instruction=system_prompt,
                 tools=[types.Tool(function_declarations=declarations)] if declarations else [],

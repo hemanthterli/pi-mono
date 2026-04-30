@@ -8,9 +8,9 @@ MODEL = "gpt-4o-mini"
 
 
 class OpenAIChat(BaseChat):
-    def __init__(self, system_prompt: str, tools: list[ToolDefinition], history: list[Message]):
+    def __init__(self, system_prompt: str, tools: list[ToolDefinition], history: list[Message], model: str | None = None):
         self._client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        self._model = MODEL
+        self._model = model or MODEL
         self._tools = [
             {
                 "type": "function",
