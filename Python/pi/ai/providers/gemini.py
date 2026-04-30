@@ -57,6 +57,19 @@ class GeminiChat(BaseChat):
             history=gemini_history,
         )
 
+    def send_stream(self, message: str):
+        tool_calls = []
+        for chunk in self._chat.send_message_stream(message):
+            if chunk.text:
+                yield chunk.text
+            if chunk.function_calls:
+                for fc in chunk.function_calls:
+                    tool_calls.append(
+                        ToolCall(name=fc.name, args=dict(fc.args), id=getattr(fc, "id", ""))
+                    )
+        if tool_calls:
+            yield tool_calls
+
     def send(self, message: str | list[ToolResult]) -> tuple[str, list[ToolCall]]:
         if isinstance(message, str):
             response = self._chat.send_message(message)

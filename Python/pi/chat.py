@@ -1,4 +1,8 @@
 import os
+from rich.console import Console
+from rich.markdown import Markdown
+from rich.panel import Panel
+
 from pi.ai.base import ToolResult
 from pi.ai.providers import get_chat
 from pi.tools import bash as bash_tool
@@ -8,6 +12,8 @@ from pi.tools import edit as edit_tool
 from pi.tools import grep as grep_tool
 from pi.tools import ls as ls_tool
 from pi import session
+
+console = Console()
 
 SYSTEM_PROMPT = (
     "You are Pi, an AI coding assistant running in the terminal. "
@@ -42,22 +48,27 @@ def start_chat_loop(provider: str = "gemini") -> None:
     history = session.load(SESSION_FILE)
 
     if history:
-        print(f"Resuming session ({len(history)} messages). Type 'new' to start fresh.\n")
+        console.print(f"[dim]Resuming session ({len(history)} messages). Type 'new' to start fresh.[/dim]\n")
     else:
-        print(f"Pi — coding assistant [{provider}]. Type 'exit' to quit.\n")
+        console.print(f"[bold]Pi[/bold] — coding assistant [[cyan]{provider}[/cyan]]. Type 'exit' to quit.\n")
 
     chat = get_chat(provider, SYSTEM_PROMPT, TOOLS, history)
 
     while True:
-        user_input = input("You: ").strip()
+        try:
+            user_input = input("You: ").strip()
+        except (KeyboardInterrupt, EOFError):
+            console.print("\n[dim]Goodbye![/dim]")
+            break
 
         if user_input.lower() in ("exit", "quit"):
-            print("Goodbye!")
+            console.print("[dim]Goodbye![/dim]")
             break
 
         if user_input.lower() == "new":
-            os.remove(SESSION_FILE)
-            print("Session cleared. Starting fresh.\n")
+            if os.path.exists(SESSION_FILE):
+                os.remove(SESSION_FILE)
+            console.print("[dim]Session cleared.[/dim]\n")
             chat = get_chat(provider, SYSTEM_PROMPT, TOOLS, [])
             continue
 
@@ -66,18 +77,43 @@ def start_chat_loop(provider: str = "gemini") -> None:
 
         session.append(SESSION_FILE, "user", user_input)
 
-        text, tool_calls = chat.send(user_input)
+        # Stream the initial response
+        text_buffer = ""
+        tool_calls = []
+        got_text = False
+
+        for chunk in chat.send_stream(user_input):
+            if isinstance(chunk, str):
+                if not got_text:
+                    console.print("\n[bold green]Pi:[/bold green] ", end="")
+                    got_text = True
+                console.print(chunk, end="")
+                text_buffer += chunk
+            elif isinstance(chunk, list):
+                tool_calls = chunk
+
+        if got_text:
+            console.print("\n")
 
         # Agent loop — runs until no more tool calls
         while tool_calls:
             results = []
             for tc in tool_calls:
-                label = tc.args.get("path") or tc.args.get("command") or tc.name
-                print(f"\n  [{tc.name}] {label}")
+                label = tc.args.get("command") or tc.args.get("path") or tc.name
+                console.print(
+                    Panel(f"[dim]{label}[/dim]", title=f"[bold cyan]{tc.name}[/bold cyan]", expand=False)
+                )
                 output = EXECUTORS[tc.name](**tc.args)
-                print(f"  {output}\n")
+                console.print(f"[dim]{output[:600]}[/dim]\n")
                 results.append(ToolResult(name=tc.name, output=output, id=tc.id))
-            text, tool_calls = chat.send(results)
 
-        session.append(SESSION_FILE, "assistant", text)
-        print(f"\nPi: {text}\n")
+            text_buffer, tool_calls = chat.send(results)
+
+        # Final response after tool calls (non-streamed)
+        if not got_text and text_buffer:
+            console.print()
+            console.print("[bold green]Pi:[/bold green]")
+            console.print(Markdown(text_buffer))
+            console.print()
+
+        session.append(SESSION_FILE, "assistant", text_buffer)

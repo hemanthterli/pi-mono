@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Generator
 
 
 @dataclass
@@ -28,4 +28,9 @@ class BaseChat(ABC):
     @abstractmethod
     def send(self, message: str | list[ToolResult]) -> tuple[str, list[ToolCall]]:
         """Send a user message or tool results. Returns (text, tool_calls)."""
+        ...
+
+    @abstractmethod
+    def send_stream(self, message: str) -> Generator[str | list[ToolCall], None, None]:
+        """Stream a user message. Yields str chunks, then list[ToolCall] at the end if tools were called."""
         ...
