@@ -19,5 +19,7 @@ def start_chat_loop() -> None:
         if not user_input:
             continue
 
-        response = chat.send_message(user_input)
-        print(f"\nGemini: {response.text}\n")
+        print("\nGemini: ", end="", flush=True)
+        for chunk in chat.send_message_stream(user_input):
+            print(chunk.text, end="", flush=True)
+        print("\n")
