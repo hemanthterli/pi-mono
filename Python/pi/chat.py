@@ -1,4 +1,6 @@
 import os
+import glob
+from datetime import datetime
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
@@ -42,7 +44,7 @@ EXECUTORS = {
     "ls": ls_tool.execute,
 }
 
-SESSION_FILE = "session.jsonl"
+SESSIONS_DIR = "sessions"
 
 DEFAULT_MODELS = {
     "gemini": "gemini-3-flash-preview",
@@ -50,29 +52,62 @@ DEFAULT_MODELS = {
 }
 
 
+def _session_file(name: str) -> str:
+    return os.path.join(SESSIONS_DIR, f"{name}.jsonl")
+
+
+def _list_sessions() -> None:
+    files = glob.glob(os.path.join(SESSIONS_DIR, "*.jsonl"))
+    if not files:
+        console.print("[dim]No sessions found.[/dim]\n")
+        return
+    table = Table(title="Saved Sessions", show_header=True, header_style="bold cyan")
+    table.add_column("Name", style="bold")
+    table.add_column("Messages", justify="right")
+    table.add_column("Last Modified")
+    for path in sorted(files, key=os.path.getmtime, reverse=True):
+        name = os.path.splitext(os.path.basename(path))[0]
+        msgs = session.load(path)
+        mtime = datetime.fromtimestamp(os.path.getmtime(path)).strftime("%Y-%m-%d %H:%M")
+        table.add_row(name, str(len(msgs)), mtime)
+    console.print(table)
+    console.print()
+
+
 def _print_help() -> None:
     table = Table(title="Pi Slash Commands", show_header=True, header_style="bold cyan")
     table.add_column("Command", style="bold")
     table.add_column("Description")
     table.add_row("/help", "Show this help message")
-    table.add_row("/clear", "Clear session history and start fresh")
+    table.add_row("/clear", "Wipe the current session's history")
     table.add_row("/model [name]", "Show current model or switch to a new one")
     table.add_row("/provider <name>", "Switch provider: gemini or openai")
+    table.add_row("/sessions", "List all saved sessions")
+    table.add_row("/session <name>", "Switch to a named session (creates if new)")
+    table.add_row("/delete [name]", "Delete a session (default: current)")
     console.print(table)
     console.print()
 
 
-def start_chat_loop(provider: str = "gemini") -> None:
-    history = session.load(SESSION_FILE)
+def start_chat_loop(provider: str = "gemini", session_name: str = "default") -> None:
+    os.makedirs(SESSIONS_DIR, exist_ok=True)
+
     current_provider = provider
     current_model = DEFAULT_MODELS.get(provider)
+    current_session = session_name
+
+    history = session.load(_session_file(current_session))
 
     if history:
-        console.print(f"[dim]Resuming session ({len(history)} messages). Type /clear to start fresh.[/dim]\n")
+        console.print(
+            f"[dim]Resuming session [bold]{current_session}[/bold] "
+            f"({len(history)} messages). Type /clear to start fresh.[/dim]\n"
+        )
     else:
         console.print(
             f"[bold]Pi[/bold] — coding assistant "
-            f"[[cyan]{current_provider}[/cyan]] [[dim]{current_model}[/dim]]. "
+            f"[[cyan]{current_provider}[/cyan]] [[dim]{current_model}[/dim]] "
+            f"session [bold]{current_session}[/bold]. "
             f"Type /help for commands.\n"
         )
 
@@ -99,18 +134,20 @@ def start_chat_loop(provider: str = "gemini") -> None:
                 _print_help()
 
             elif cmd == "/clear":
-                if os.path.exists(SESSION_FILE):
-                    os.remove(SESSION_FILE)
+                path = _session_file(current_session)
+                if os.path.exists(path):
+                    os.remove(path)
                 chat = get_chat(current_provider, SYSTEM_PROMPT, TOOLS, [], model=current_model)
-                console.print("[dim]Session cleared.[/dim]\n")
+                console.print(f"[dim]Session [bold]{current_session}[/bold] cleared.[/dim]\n")
 
             elif cmd == "/model":
                 if not arg:
                     console.print(f"[dim]Current model: {current_model}[/dim]\n")
                 else:
                     current_model = arg
-                    if os.path.exists(SESSION_FILE):
-                        os.remove(SESSION_FILE)
+                    path = _session_file(current_session)
+                    if os.path.exists(path):
+                        os.remove(path)
                     chat = get_chat(current_provider, SYSTEM_PROMPT, TOOLS, [], model=current_model)
                     console.print(f"[dim]Switched to model: {current_model}. Session cleared.[/dim]\n")
 
@@ -120,10 +157,43 @@ def start_chat_loop(provider: str = "gemini") -> None:
                 else:
                     current_provider = arg
                     current_model = DEFAULT_MODELS[current_provider]
-                    if os.path.exists(SESSION_FILE):
-                        os.remove(SESSION_FILE)
+                    path = _session_file(current_session)
+                    if os.path.exists(path):
+                        os.remove(path)
                     chat = get_chat(current_provider, SYSTEM_PROMPT, TOOLS, [], model=current_model)
                     console.print(f"[dim]Switched to {current_provider} ({current_model}). Session cleared.[/dim]\n")
+
+            elif cmd == "/sessions":
+                _list_sessions()
+
+            elif cmd == "/session":
+                if not arg:
+                    console.print(f"[dim]Current session: [bold]{current_session}[/bold][/dim]\n")
+                else:
+                    current_session = arg
+                    history = session.load(_session_file(current_session))
+                    chat = get_chat(current_provider, SYSTEM_PROMPT, TOOLS, history, model=current_model)
+                    if history:
+                        console.print(
+                            f"[dim]Switched to session [bold]{current_session}[/bold] "
+                            f"({len(history)} messages).[/dim]\n"
+                        )
+                    else:
+                        console.print(f"[dim]Started new session [bold]{current_session}[/bold].[/dim]\n")
+
+            elif cmd == "/delete":
+                target = arg or current_session
+                path = _session_file(target)
+                if not os.path.exists(path):
+                    console.print(f"[red]Session {target!r} not found.[/red]\n")
+                else:
+                    os.remove(path)
+                    console.print(f"[dim]Deleted session [bold]{target}[/bold].[/dim]")
+                    if target == current_session:
+                        current_session = "default"
+                        chat = get_chat(current_provider, SYSTEM_PROMPT, TOOLS, [], model=current_model)
+                        console.print(f"[dim]Switched to session [bold]{current_session}[/bold].[/dim]")
+                    console.print()
 
             else:
                 console.print(f"[red]Unknown command: {cmd}. Type /help for a list.[/red]\n")
@@ -133,7 +203,7 @@ def start_chat_loop(provider: str = "gemini") -> None:
         if not user_input:
             continue
 
-        session.append(SESSION_FILE, "user", user_input)
+        session.append(_session_file(current_session), "user", user_input)
 
         # Stream the initial response
         text_buffer = ""
@@ -174,4 +244,4 @@ def start_chat_loop(provider: str = "gemini") -> None:
             console.print(Markdown(text_buffer))
             console.print()
 
-        session.append(SESSION_FILE, "assistant", text_buffer)
+        session.append(_session_file(current_session), "assistant", text_buffer)
