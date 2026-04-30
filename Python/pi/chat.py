@@ -1,13 +1,29 @@
+from google.genai import types
 from pi.ai.client import get_client
+from pi.tools import bash as bash_tool
 
 MODEL = "gemini-3-flash-preview"
+
+SYSTEM_PROMPT = (
+    "You are Pi, an AI coding assistant running in the terminal. "
+    "You have a bash tool to run shell commands, read files, and interact with the system. "
+    "When the user asks you to do something that requires running a command, use the bash tool. "
+    "Be concise and helpful."
+)
 
 
 def start_chat_loop() -> None:
     client = get_client()
-    chat = client.chats.create(model=MODEL)
 
-    print("Pi — chat started. Type 'exit' to quit.\n")
+    chat = client.chats.create(
+        model=MODEL,
+        config=types.GenerateContentConfig(
+            system_instruction=SYSTEM_PROMPT,
+            tools=[types.Tool(function_declarations=[bash_tool.DECLARATION])],
+        ),
+    )
+
+    print("Pi — coding assistant. Type 'exit' to quit.\n")
 
     while True:
         user_input = input("You: ").strip()
@@ -19,7 +35,21 @@ def start_chat_loop() -> None:
         if not user_input:
             continue
 
-        print("\nGemini: ", end="", flush=True)
-        for chunk in chat.send_message_stream(user_input):
-            print(chunk.text, end="", flush=True)
-        print("\n")
+        response = chat.send_message(user_input)
+
+        # Agent loop — keep going while Gemini wants to call tools
+        while response.function_calls:
+            tool_results = []
+            for fc in response.function_calls:
+                print(f"\n  [bash] $ {fc.args['command']}")
+                output = bash_tool.execute(fc.args["command"])
+                print(f"  {output}\n")
+                tool_results.append(
+                    types.Part.from_function_response(
+                        name=fc.name,
+                        response={"output": output},
+                    )
+                )
+            response = chat.send_message(tool_results)
+
+        print(f"\nPi: {response.text}\n")
