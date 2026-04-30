@@ -5,12 +5,15 @@ from pi.tools import bash as bash_tool
 from pi.tools import read as read_tool
 from pi.tools import write as write_tool
 from pi.tools import edit as edit_tool
+from pi.tools import grep as grep_tool
+from pi.tools import ls as ls_tool
 from pi import session
 
 SYSTEM_PROMPT = (
     "You are Pi, an AI coding assistant running in the terminal. "
-    "You have tools to run shell commands, read files, write files, and edit files. "
-    "Prefer 'edit' over 'write' when making targeted changes to existing files. "
+    "You have tools to run shell commands, read/write/edit files, list directories, and search file contents. "
+    "Prefer 'edit' over 'write' for targeted changes. "
+    "Use 'grep' instead of 'read' when searching for something specific across files. "
     "Be concise and helpful."
 )
 
@@ -19,6 +22,8 @@ TOOLS = [
     read_tool.DEFINITION,
     write_tool.DEFINITION,
     edit_tool.DEFINITION,
+    grep_tool.DEFINITION,
+    ls_tool.DEFINITION,
 ]
 
 EXECUTORS = {
@@ -26,6 +31,8 @@ EXECUTORS = {
     "read": read_tool.execute,
     "write": write_tool.execute,
     "edit": edit_tool.execute,
+    "grep": grep_tool.execute,
+    "ls": ls_tool.execute,
 }
 
 SESSION_FILE = "session.jsonl"
