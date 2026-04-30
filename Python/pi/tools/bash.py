@@ -1,22 +1,22 @@
 import subprocess
-from google.genai import types
+from pi.ai.base import ToolDefinition
 
-DECLARATION = types.FunctionDeclaration(
+DEFINITION = ToolDefinition(
     name="bash",
     description=(
         "Run a shell command and return its output. "
         "Use this to read files, list directories, run scripts, or interact with the system."
     ),
-    parameters=types.Schema(
-        type=types.Type.OBJECT,
-        properties={
-            "command": types.Schema(
-                type=types.Type.STRING,
-                description="The shell command to run",
-            )
+    parameters={
+        "type": "object",
+        "properties": {
+            "command": {
+                "type": "string",
+                "description": "The shell command to run",
+            }
         },
-        required=["command"],
-    ),
+        "required": ["command"],
+    },
 )
 
 
