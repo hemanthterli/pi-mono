@@ -15,6 +15,7 @@ from pi.tools import edit as edit_tool
 from pi.tools import grep as grep_tool
 from pi.tools import ls as ls_tool
 from pi import session
+from pi import config as _config
 
 console = Console()
 
@@ -44,20 +45,13 @@ EXECUTORS = {
     "ls": ls_tool.execute,
 }
 
-SESSIONS_DIR = "sessions"
 
-DEFAULT_MODELS = {
-    "gemini": "gemini-3-flash-preview",
-    "openai": "gpt-4o-mini",
-}
+def _session_file(sessions_dir: str, name: str) -> str:
+    return os.path.join(sessions_dir, f"{name}.jsonl")
 
 
-def _session_file(name: str) -> str:
-    return os.path.join(SESSIONS_DIR, f"{name}.jsonl")
-
-
-def _list_sessions() -> None:
-    files = glob.glob(os.path.join(SESSIONS_DIR, "*.jsonl"))
+def _list_sessions(sessions_dir: str) -> None:
+    files = glob.glob(os.path.join(sessions_dir, "*.jsonl"))
     if not files:
         console.print("[dim]No sessions found.[/dim]\n")
         return
@@ -74,6 +68,19 @@ def _list_sessions() -> None:
     console.print()
 
 
+def _print_config(cfg: dict) -> None:
+    table = Table(title="Pi Config", show_header=True, header_style="bold cyan")
+    table.add_column("Key", style="bold")
+    table.add_column("Value")
+    table.add_row("provider", cfg["provider"])
+    table.add_row("sessions_dir", cfg["sessions_dir"])
+    for provider_name, model_name in cfg["models"].items():
+        table.add_row(f"model.{provider_name}", model_name)
+    table.add_row("[dim]config file[/dim]", str(_config.CONFIG_PATH))
+    console.print(table)
+    console.print()
+
+
 def _print_help() -> None:
     table = Table(title="Pi Slash Commands", show_header=True, header_style="bold cyan")
     table.add_column("Command", style="bold")
@@ -85,18 +92,23 @@ def _print_help() -> None:
     table.add_row("/sessions", "List all saved sessions")
     table.add_row("/session <name>", "Switch to a named session (creates if new)")
     table.add_row("/delete [name]", "Delete a session (default: current)")
+    table.add_row("/config", "Show current config")
+    table.add_row("/config set <key> <value>", "Save a config value persistently")
     console.print(table)
     console.print()
 
 
 def start_chat_loop(provider: str = "gemini", session_name: str = "default") -> None:
-    os.makedirs(SESSIONS_DIR, exist_ok=True)
+    cfg = _config.load()
 
     current_provider = provider
-    current_model = DEFAULT_MODELS.get(provider)
+    current_model = cfg["models"].get(current_provider, provider)
     current_session = session_name
+    sessions_dir = cfg["sessions_dir"]
 
-    history = session.load(_session_file(current_session))
+    os.makedirs(sessions_dir, exist_ok=True)
+
+    history = session.load(_session_file(sessions_dir, current_session))
 
     if history:
         console.print(
@@ -126,15 +138,16 @@ def start_chat_loop(provider: str = "gemini", session_name: str = "default") -> 
 
         # --- Slash commands ---
         if user_input.startswith("/"):
-            parts = user_input.split(maxsplit=1)
+            parts = user_input.split(maxsplit=2)
             cmd = parts[0].lower()
             arg = parts[1].strip() if len(parts) > 1 else ""
+            arg2 = parts[2].strip() if len(parts) > 2 else ""
 
             if cmd == "/help":
                 _print_help()
 
             elif cmd == "/clear":
-                path = _session_file(current_session)
+                path = _session_file(sessions_dir, current_session)
                 if os.path.exists(path):
                     os.remove(path)
                 chat = get_chat(current_provider, SYSTEM_PROMPT, TOOLS, [], model=current_model)
@@ -145,7 +158,7 @@ def start_chat_loop(provider: str = "gemini", session_name: str = "default") -> 
                     console.print(f"[dim]Current model: {current_model}[/dim]\n")
                 else:
                     current_model = arg
-                    path = _session_file(current_session)
+                    path = _session_file(sessions_dir, current_session)
                     if os.path.exists(path):
                         os.remove(path)
                     chat = get_chat(current_provider, SYSTEM_PROMPT, TOOLS, [], model=current_model)
@@ -156,22 +169,22 @@ def start_chat_loop(provider: str = "gemini", session_name: str = "default") -> 
                     console.print(f"[red]Unknown provider: {arg!r}. Use 'gemini' or 'openai'.[/red]\n")
                 else:
                     current_provider = arg
-                    current_model = DEFAULT_MODELS[current_provider]
-                    path = _session_file(current_session)
+                    current_model = cfg["models"].get(current_provider, current_provider)
+                    path = _session_file(sessions_dir, current_session)
                     if os.path.exists(path):
                         os.remove(path)
                     chat = get_chat(current_provider, SYSTEM_PROMPT, TOOLS, [], model=current_model)
                     console.print(f"[dim]Switched to {current_provider} ({current_model}). Session cleared.[/dim]\n")
 
             elif cmd == "/sessions":
-                _list_sessions()
+                _list_sessions(sessions_dir)
 
             elif cmd == "/session":
                 if not arg:
                     console.print(f"[dim]Current session: [bold]{current_session}[/bold][/dim]\n")
                 else:
                     current_session = arg
-                    history = session.load(_session_file(current_session))
+                    history = session.load(_session_file(sessions_dir, current_session))
                     chat = get_chat(current_provider, SYSTEM_PROMPT, TOOLS, history, model=current_model)
                     if history:
                         console.print(
@@ -183,7 +196,7 @@ def start_chat_loop(provider: str = "gemini", session_name: str = "default") -> 
 
             elif cmd == "/delete":
                 target = arg or current_session
-                path = _session_file(target)
+                path = _session_file(sessions_dir, target)
                 if not os.path.exists(path):
                     console.print(f"[red]Session {target!r} not found.[/red]\n")
                 else:
@@ -195,6 +208,28 @@ def start_chat_loop(provider: str = "gemini", session_name: str = "default") -> 
                         console.print(f"[dim]Switched to session [bold]{current_session}[/bold].[/dim]")
                     console.print()
 
+            elif cmd == "/config":
+                if arg == "set":
+                    # /config set <key> <value>
+                    if not arg2:
+                        console.print("[red]Usage: /config set <key> <value>[/red]\n")
+                    else:
+                        # arg2 may be "value" alone if key was in arg — re-split from original
+                        raw = user_input.split(maxsplit=3)
+                        key = raw[2] if len(raw) > 2 else ""
+                        val = raw[3] if len(raw) > 3 else ""
+                        if not key or not val:
+                            console.print("[red]Usage: /config set <key> <value>[/red]\n")
+                        else:
+                            ok, msg = _config.set_value(key, val)
+                            if ok:
+                                cfg = _config.load()
+                                console.print(f"[dim]{msg}[/dim]\n")
+                            else:
+                                console.print(f"[red]{msg}[/red]\n")
+                else:
+                    _print_config(cfg)
+
             else:
                 console.print(f"[red]Unknown command: {cmd}. Type /help for a list.[/red]\n")
 
@@ -203,7 +238,7 @@ def start_chat_loop(provider: str = "gemini", session_name: str = "default") -> 
         if not user_input:
             continue
 
-        session.append(_session_file(current_session), "user", user_input)
+        session.append(_session_file(sessions_dir, current_session), "user", user_input)
 
         # Stream the initial response
         text_buffer = ""
@@ -244,4 +279,4 @@ def start_chat_loop(provider: str = "gemini", session_name: str = "default") -> 
             console.print(Markdown(text_buffer))
             console.print()
 
-        session.append(_session_file(current_session), "assistant", text_buffer)
+        session.append(_session_file(sessions_dir, current_session), "assistant", text_buffer)
