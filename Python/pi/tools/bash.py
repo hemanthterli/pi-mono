@@ -1,4 +1,5 @@
 import subprocess
+import sys
 from pi.ai.base import ToolDefinition
 
 DEFINITION = ToolDefinition(
@@ -21,9 +22,15 @@ DEFINITION = ToolDefinition(
 
 
 def execute(command: str) -> str:
+    if sys.platform == "win32":
+        args = ["bash", "-c", command]
+        shell = False
+    else:
+        args = command
+        shell = True
     result = subprocess.run(
-        command,
-        shell=True,
+        args,
+        shell=shell,
         capture_output=True,
         text=True,
         timeout=30,

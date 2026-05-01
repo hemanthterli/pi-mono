@@ -15,7 +15,9 @@ DEFAULTS: dict = {
 
 def load() -> dict:
     if not CONFIG_PATH.exists():
-        return {**DEFAULTS, "models": dict(DEFAULTS["models"])}
+        cfg = {**DEFAULTS, "models": dict(DEFAULTS["models"])}
+        save(cfg)
+        return cfg
     try:
         with open(CONFIG_PATH, "r", encoding="utf-8") as f:
             saved = json.load(f)

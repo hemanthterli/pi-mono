@@ -104,7 +104,7 @@ def start_chat_loop(provider: str = "gemini", session_name: str = "default") -> 
     current_provider = provider
     current_model = cfg["models"].get(current_provider, provider)
     current_session = session_name
-    sessions_dir = cfg["sessions_dir"]
+    sessions_dir = os.path.expanduser(cfg["sessions_dir"])
 
     os.makedirs(sessions_dir, exist_ok=True)
 
