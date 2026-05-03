@@ -11,37 +11,56 @@ DEFINITION = ToolDefinition(
                 "type": "string",
                 "description": "Directory path to list",
             },
+            "recursive": {
+                "type": "boolean",
+                "description": "Whether to list subdirectories recursively",
+            },
         },
         "required": ["path"],
     },
 )
 
 
-def execute(path: str) -> str:
+def execute(path: str, recursive: bool = False) -> str:
     try:
-        dirs = []
-        files = []
-
-        with os.scandir(path) as it:
-            for entry in it:
-                if entry.is_dir():
-                    dirs.append(f"  {entry.name}/")
-                else:
-                    size = entry.stat().st_size
-                    if size < 1024:
-                        size_str = f"{size} B"
-                    elif size < 1024 * 1024:
-                        size_str = f"{size / 1024:.1f} KB"
+        if not recursive:
+            dirs = []
+            files = []
+            with os.scandir(path) as it:
+                for entry in it:
+                    if entry.is_dir():
+                        dirs.append(f"  {entry.name}/")
                     else:
-                        size_str = f"{size / (1024 * 1024):.1f} MB"
-                    files.append(f"  {entry.name}  ({size_str})")
-
-        dirs.sort()
-        files.sort()
-
-        lines = [f"{os.path.abspath(path)}"] + dirs + files
-        return "\n".join(lines) or "(empty directory)"
+                        size = entry.stat().st_size
+                        files.append(f"  {entry.name}  ({_format_size(size)})")
+            dirs.sort()
+            files.sort()
+            lines = [f"{os.path.abspath(path)}"] + dirs + files
+            return "\n".join(lines) or "(empty directory)"
+        else:
+            lines = [f"{os.path.abspath(path)}"]
+            for root, dirs, filenames in os.walk(path):
+                dirs[:] = [d for d in dirs if not d.startswith(".")]
+                level = root.replace(path, "").count(os.sep)
+                indent = "  " * (level + 1)
+                for d in sorted(dirs):
+                    lines.append(f"{indent}{d}/")
+                for f in sorted(filenames):
+                    lines.append(f"{indent}{f}")
+                # limit output size
+                if len(lines) > 500:
+                    lines.append("  ... (truncated)")
+                    break
+            return "\n".join(lines)
     except FileNotFoundError:
         return f"Error: directory not found: {path}"
     except Exception as e:
         return f"Error: {e}"
+
+
+def _format_size(size: int) -> str:
+    if size < 1024:
+        return f"{size} B"
+    if size < 1024 * 1024:
+        return f"{size / 1024:.1f} KB"
+    return f"{size / (1024 * 1024):.1f} MB"
