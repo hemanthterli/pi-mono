@@ -28,6 +28,48 @@ def _to_gemini_schema(schema: dict) -> types.Schema:
     )
 
 
+def _to_gemini_history(history: list) -> list[types.Content]:
+    result = []
+    i = 0
+    while i < len(history):
+        msg = history[i]
+        if msg.role == "user":
+            result.append(types.Content(
+                role="user",
+                parts=[types.Part.from_text(text=msg.content or "")],
+            ))
+            i += 1
+        elif msg.role == "assistant":
+            parts = []
+            if msg.content:
+                parts.append(types.Part.from_text(text=msg.content))
+            if msg.tool_calls:
+                for tc in msg.tool_calls:
+                    parts.append(types.Part(
+                        function_call=types.FunctionCall(
+                            id=tc.get("id", ""),
+                            name=tc["name"],
+                            args=tc["args"],
+                        )
+                    ))
+            result.append(types.Content(role="model", parts=parts or [types.Part.from_text(text="")]))
+            i += 1
+        elif msg.role == "tool":
+            # Gemini requires consecutive tool results grouped into one user message
+            parts = []
+            while i < len(history) and history[i].role == "tool":
+                t = history[i]
+                parts.append(types.Part.from_function_response(
+                    name=t.name or "",
+                    response={"output": t.content or ""},
+                ))
+                i += 1
+            result.append(types.Content(role="user", parts=parts))
+        else:
+            i += 1
+    return result
+
+
 class GeminiChat(BaseChat):
     def __init__(self, system_prompt: str, tools: list[ToolDefinition], history: list[Message], model: str | None = None):
         client = get_client()
@@ -39,15 +81,7 @@ class GeminiChat(BaseChat):
             )
             for t in tools
         ]
-        # Gemini uses "model" for assistant role
-        role_map = {"user": "user", "assistant": "model"}
-        gemini_history = [
-            types.Content(
-                role=role_map.get(msg.role, msg.role),
-                parts=[types.Part.from_text(text=msg.content)],
-            )
-            for msg in history
-        ]
+        gemini_history = _to_gemini_history(history)
         self._chat = client.chats.create(
             model=model or MODEL,
             config=types.GenerateContentConfig(

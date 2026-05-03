@@ -350,6 +350,15 @@ def start_chat_loop(provider: str = "gemini", session_name: str = "default") -> 
         if got_text:
             console.print("\n")
 
+        # Persist initial assistant turn
+        _sess = _session_file(sessions_dir, current_session)
+        if tool_calls:
+            session.append_assistant(_sess, text_buffer or None, [
+                {"id": tc.id, "name": tc.name, "args": tc.args} for tc in tool_calls
+            ])
+        else:
+            session.append(_sess, "assistant", text_buffer)
+
         # Agent loop — runs until no more tool calls
         while tool_calls:
             results = []
@@ -357,8 +366,8 @@ def start_chat_loop(provider: str = "gemini", session_name: str = "default") -> 
                 label = tc.args.get("command") or tc.args.get("path") or tc.name
 
                 if tc.name == "ask_user":
-                    # Tool manages its own display (prints question, reads input)
                     output = EXECUTORS[tc.name](**tc.args)
+                    session.append_tool_result(_sess, tc.id, tc.name, output)
                     results.append(ToolResult(name=tc.name, output=output, id=tc.id))
                     continue
 
@@ -368,6 +377,7 @@ def start_chat_loop(provider: str = "gemini", session_name: str = "default") -> 
 
                 output = EXECUTORS[tc.name](**tc.args)
                 console.print(f"[dim]{output[:600]}[/dim]\n")
+                session.append_tool_result(_sess, tc.id, tc.name, output)
                 results.append(ToolResult(name=tc.name, output=output, id=tc.id))
 
             new_text, tool_calls = chat.send(results)
@@ -378,14 +388,20 @@ def start_chat_loop(provider: str = "gemini", session_name: str = "default") -> 
                 console.print(Markdown(new_text))
                 text_buffer += "\n" + new_text
 
+            # Persist this round's assistant response
+            if tool_calls:
+                session.append_assistant(_sess, new_text or None, [
+                    {"id": tc.id, "name": tc.name, "args": tc.args} for tc in tool_calls
+                ])
+            elif new_text:
+                session.append(_sess, "assistant", new_text)
+
         # Final response after tool calls (non-streamed) - ONLY if we haven't printed anything yet
         if not got_text and text_buffer:
             console.print()
             console.print("[bold green]Pi:[/bold green]")
             console.print(Markdown(text_buffer))
             console.print()
-
-        session.append(_session_file(sessions_dir, current_session), "assistant", text_buffer)
 
         # Show token usage and estimated cost
         _print_usage(chat.last_usage, current_model)

@@ -24,7 +24,32 @@ class OpenAIChat(BaseChat):
         ]
         self._messages: list[dict] = [{"role": "system", "content": system_prompt}]
         for msg in history:
-            self._messages.append({"role": msg.role, "content": msg.content})
+            if msg.role == "user":
+                self._messages.append({"role": "user", "content": msg.content or ""})
+            elif msg.role == "assistant" and not msg.tool_calls:
+                self._messages.append({"role": "assistant", "content": msg.content})
+            elif msg.role == "assistant" and msg.tool_calls:
+                self._messages.append({
+                    "role": "assistant",
+                    "content": msg.content or None,
+                    "tool_calls": [
+                        {
+                            "id": tc["id"],
+                            "type": "function",
+                            "function": {
+                                "name": tc["name"],
+                                "arguments": json.dumps(tc["args"]),
+                            },
+                        }
+                        for tc in msg.tool_calls
+                    ],
+                })
+            elif msg.role == "tool":
+                self._messages.append({
+                    "role": "tool",
+                    "tool_call_id": msg.tool_call_id or "",
+                    "content": msg.content or "",
+                })
         self.last_usage = Usage()
 
     def send_stream(self, message: str):
