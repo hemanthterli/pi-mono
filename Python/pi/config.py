@@ -10,6 +10,7 @@ DEFAULTS: dict = {
         "openai": "gpt-4o-mini",
     },
     "sessions_dir": "sessions",
+    "compact_threshold": 30000,
 }
 
 

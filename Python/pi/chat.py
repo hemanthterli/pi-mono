@@ -6,7 +6,7 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.table import Table
 
-from pi.ai.base import ToolResult
+from pi.ai.base import ToolResult, Usage
 from pi.ai.providers import get_chat
 from pi.tools import bash as bash_tool
 from pi.tools import read as read_tool
@@ -18,6 +18,21 @@ from pi import session
 from pi import config as _config
 
 console = Console()
+
+# Approximate cost per 1M tokens (input, output) in USD
+_COST_PER_1M: dict[str, tuple[float, float]] = {
+    "gpt-4o-mini": (0.15, 0.60),
+    "gpt-4o": (2.50, 10.00),
+    "gemini-2.5-flash": (0.15, 0.60),
+    "gemini-2.0-flash": (0.10, 0.40),
+    "gemini-3-flash-preview": (0.10, 0.40),
+}
+
+COMPACT_PROMPT = (
+    "Summarize our entire conversation so far into a single detailed paragraph. "
+    "Include: the main goal, key decisions made, important code written or changed, "
+    "and any context needed to continue. Be thorough — this replaces the full history."
+)
 
 SYSTEM_PROMPT = (
     "You are Pi, an AI coding assistant running in the terminal. "
@@ -76,6 +91,7 @@ def _print_config(cfg: dict) -> None:
     table.add_row("sessions_dir", cfg["sessions_dir"])
     for provider_name, model_name in cfg["models"].items():
         table.add_row(f"model.{provider_name}", model_name)
+    table.add_row("compact_threshold", f"{cfg.get('compact_threshold', 30000):,} tokens")
     table.add_row("[dim]config file[/dim]", str(_config.CONFIG_PATH))
     console.print(table)
     console.print()
@@ -94,8 +110,40 @@ def _print_help() -> None:
     table.add_row("/delete [name]", "Delete a session (default: current)")
     table.add_row("/config", "Show current config")
     table.add_row("/config set <key> <value>", "Save a config value persistently")
+    table.add_row("/compact", "Summarize and compress the current session history")
     console.print(table)
     console.print()
+
+
+def _print_usage(usage: Usage, model: str) -> None:
+    if not usage.input_tokens and not usage.output_tokens:
+        return
+    parts = [f"↑{usage.input_tokens:,} ↓{usage.output_tokens:,} tokens"]
+    model_lower = model.lower()
+    rate = next((v for k, v in _COST_PER_1M.items() if model_lower.startswith(k) or k in model_lower), None)
+    if rate:
+        cost = (usage.input_tokens * rate[0] + usage.output_tokens * rate[1]) / 1_000_000
+        parts.append(f"~${cost:.4f}")
+    console.print(f"[dim]  {'  ·  '.join(parts)}[/dim]\n")
+
+
+def _compact_session(
+    chat, sessions_dir: str, current_session: str,
+    current_provider: str, current_model: str, cfg: dict,
+):
+    console.print("[yellow]Context getting long — compacting session history...[/yellow]")
+    summary, _ = chat.send(COMPACT_PROMPT)
+    if not summary:
+        console.print("[red]Compaction failed — continuing with full history.[/red]\n")
+        return chat
+    path = _session_file(sessions_dir, current_session)
+    if os.path.exists(path):
+        os.remove(path)
+    session.append(path, "assistant", f"[Compacted context]\n{summary}")
+    history = session.load(path)
+    new_chat = get_chat(current_provider, SYSTEM_PROMPT, TOOLS, history, model=current_model)
+    console.print("[dim]Session compacted. Continuing with summarized context.[/dim]\n")
+    return new_chat
 
 
 def start_chat_loop(provider: str = "gemini", session_name: str = "default") -> None:
@@ -208,6 +256,12 @@ def start_chat_loop(provider: str = "gemini", session_name: str = "default") -> 
                         console.print(f"[dim]Switched to session [bold]{current_session}[/bold].[/dim]")
                     console.print()
 
+            elif cmd == "/compact":
+                chat = _compact_session(
+                    chat, sessions_dir, current_session,
+                    current_provider, current_model, cfg,
+                )
+
             elif cmd == "/config":
                 if arg == "set":
                     # /config set <key> <value>
@@ -280,3 +334,14 @@ def start_chat_loop(provider: str = "gemini", session_name: str = "default") -> 
             console.print()
 
         session.append(_session_file(sessions_dir, current_session), "assistant", text_buffer)
+
+        # Show token usage and estimated cost
+        _print_usage(chat.last_usage, current_model)
+
+        # Auto-compact when context grows too large
+        threshold = cfg.get("compact_threshold", 30000)
+        if chat.last_usage.input_tokens > threshold:
+            chat = _compact_session(
+                chat, sessions_dir, current_session,
+                current_provider, current_model, cfg,
+            )

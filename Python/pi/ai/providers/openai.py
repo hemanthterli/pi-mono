@@ -1,7 +1,7 @@
 import json
 import os
 from openai import OpenAI
-from pi.ai.base import BaseChat, ToolCall, ToolResult, ToolDefinition
+from pi.ai.base import BaseChat, ToolCall, ToolResult, ToolDefinition, Usage
 from pi.session import Message
 
 MODEL = "gpt-4o-mini"
@@ -25,19 +25,30 @@ class OpenAIChat(BaseChat):
         self._messages: list[dict] = [{"role": "system", "content": system_prompt}]
         for msg in history:
             self._messages.append({"role": msg.role, "content": msg.content})
+        self.last_usage = Usage()
 
     def send_stream(self, message: str):
         self._messages.append({"role": "user", "content": message})
+        self.last_usage = Usage()
         stream = self._client.chat.completions.create(
             model=self._model,
             messages=self._messages,
             tools=self._tools or None,
             stream=True,
+            stream_options={"include_usage": True},
         )
         collected_text = ""
         raw_tcs: dict[int, dict] = {}
 
         for chunk in stream:
+            # OpenAI sends a final empty chunk with usage when stream_options includes it
+            if chunk.usage:
+                self.last_usage = Usage(
+                    input_tokens=chunk.usage.prompt_tokens,
+                    output_tokens=chunk.usage.completion_tokens,
+                )
+            if not chunk.choices:
+                continue
             delta = chunk.choices[0].delta
             if delta.content:
                 collected_text += delta.content
@@ -86,6 +97,12 @@ class OpenAIChat(BaseChat):
 
         msg = response.choices[0].message
         self._messages.append(msg)
+
+        if response.usage:
+            self.last_usage = Usage(
+                input_tokens=response.usage.prompt_tokens,
+                output_tokens=response.usage.completion_tokens,
+            )
 
         tool_calls = []
         if msg.tool_calls:

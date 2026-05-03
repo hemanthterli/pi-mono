@@ -1,5 +1,5 @@
 from google.genai import types
-from pi.ai.base import BaseChat, ToolCall, ToolResult, ToolDefinition
+from pi.ai.base import BaseChat, ToolCall, ToolResult, ToolDefinition, Usage
 from pi.ai.client import get_client
 from pi.session import Message
 
@@ -56,8 +56,10 @@ class GeminiChat(BaseChat):
             ),
             history=gemini_history,
         )
+        self.last_usage = Usage()
 
     def send_stream(self, message: str):
+        self.last_usage = Usage()
         tool_calls = []
         for chunk in self._chat.send_message_stream(message):
             if chunk.text:
@@ -67,6 +69,11 @@ class GeminiChat(BaseChat):
                     tool_calls.append(
                         ToolCall(name=fc.name, args=dict(fc.args), id=getattr(fc, "id", ""))
                     )
+            if chunk.usage_metadata:
+                self.last_usage = Usage(
+                    input_tokens=chunk.usage_metadata.prompt_token_count or 0,
+                    output_tokens=chunk.usage_metadata.candidates_token_count or 0,
+                )
         if tool_calls:
             yield tool_calls
 
@@ -83,6 +90,11 @@ class GeminiChat(BaseChat):
             ]
             response = self._chat.send_message(parts)
 
+        if response.usage_metadata:
+            self.last_usage = Usage(
+                input_tokens=response.usage_metadata.prompt_token_count or 0,
+                output_tokens=response.usage_metadata.candidates_token_count or 0,
+            )
         tool_calls = [
             ToolCall(name=fc.name, args=dict(fc.args), id=getattr(fc, "id", ""))
             for fc in (response.function_calls or [])

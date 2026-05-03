@@ -24,6 +24,12 @@ class ToolResult:
     id: str = ""
 
 
+@dataclass
+class Usage:
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+
 class BaseChat(ABC):
     @abstractmethod
     def send(self, message: str | list[ToolResult]) -> tuple[str, list[ToolCall]]:
