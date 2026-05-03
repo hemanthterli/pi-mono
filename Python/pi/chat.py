@@ -1,5 +1,9 @@
 import os
 import glob
+import platform
+import re
+import subprocess
+import sys
 from datetime import datetime
 from rich.console import Console
 from rich.markdown import Markdown
@@ -35,19 +39,63 @@ COMPACT_PROMPT = (
     "and any context needed to continue. Be thorough — this replaces the full history."
 )
 
-SYSTEM_PROMPT = (
-    "You are Pi, an AI coding assistant running in the terminal. "
-    "You have tools to run shell commands, read/write/edit files, list directories, and search file contents. "
-    "Prefer 'edit' over 'write' for targeted changes. "
-    "Use 'grep' instead of 'read' when searching for something specific across files. "
-    "\n\nCRITICAL: When performing tasks that require multiple tool calls, you MUST use the text buffer to "
-    "provide a brief status update after each tool result. Explain what you've found and what your next "
-    "step is. This is essential for the user to follow your progress."
-    "\n\nIf a file is truncated during a 'read', you MUST acknowledge this and decide whether to read the "
-    "next chunk using the 'offset' parameter. "
-    "Always use 'recursive=True' with 'ls' when you need a comprehensive view of the project structure. "
-    "Be concise, technical, and helpful."
+# Matches shell commands AND Python/PowerShell equivalents that are irreversible or destructive
+_DESTRUCTIVE_RE = re.compile(
+    r"\brm\s"
+    r"|\brmdir\b"
+    r"|\bdel\s"
+    r"|\brd\s"
+    r"|git\s+reset\s+--hard"
+    r"|git\s+clean\b"
+    r"|git\s+push\b.*(?:-f\b|--force\b)"
+    r"|\bkill\b"
+    r"|\bpkill\b"
+    r"|\bdrop\s+table\b"
+    r"|\btruncate\s+table\b"
+    r"|os\.remove\b"
+    r"|os\.unlink\b"
+    r"|shutil\.rmtree\b"
+    r"|pathlib.*\.unlink\b"
+    r"|Remove-Item\b",
+    re.IGNORECASE,
 )
+
+
+def _is_destructive(command: str) -> bool:
+    return bool(_DESTRUCTIVE_RE.search(command))
+
+
+def _build_system_prompt() -> str:
+    """Build system prompt with live environment context injected at startup."""
+    cwd = os.getcwd()
+    os_name = f"{platform.system()} {platform.release()}"
+    py_ver = sys.version.split()[0]
+
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True, text=True, timeout=5, cwd=cwd,
+        )
+        git_branch = result.stdout.strip() if result.returncode == 0 else "not a git repo"
+    except Exception:
+        git_branch = "unknown"
+
+    return (
+        "You are Pi, an AI coding assistant running in the terminal.\n\n"
+        f"Environment:\n"
+        f"  cwd: {cwd}\n"
+        f"  os: {os_name}\n"
+        f"  python: {py_ver}\n"
+        f"  git branch: {git_branch}\n\n"
+        "Guidelines:\n"
+        "  - Prefer 'edit' over 'write' for targeted changes to existing files.\n"
+        "  - Use 'grep' instead of 'read' when searching for something specific across files.\n"
+        "  - After each tool result, give a brief status update: what you found and your next step.\n"
+        "  - If a file read is truncated, use the 'offset' parameter to continue reading.\n"
+        "  - Use recursive=True with 'ls' for a comprehensive view of project structure.\n"
+        "  - Be concise, technical, and direct."
+    )
+
 
 TOOLS = [
     bash_tool.DEFINITION,
@@ -137,6 +185,7 @@ def _print_usage(usage: Usage, model: str) -> None:
 def _compact_session(
     chat, sessions_dir: str, current_session: str,
     current_provider: str, current_model: str, cfg: dict,
+    system_prompt: str,
 ):
     console.print("[yellow]Context getting long — compacting session history...[/yellow]")
     summary, _ = chat.send(COMPACT_PROMPT)
@@ -148,7 +197,7 @@ def _compact_session(
         os.remove(path)
     session.append(path, "assistant", f"[Compacted context]\n{summary}")
     history = session.load(path)
-    new_chat = get_chat(current_provider, SYSTEM_PROMPT, TOOLS, history, model=current_model)
+    new_chat = get_chat(current_provider, system_prompt, TOOLS, history, model=current_model)
     console.print("[dim]Session compacted. Continuing with summarized context.[/dim]\n")
     return new_chat
 
@@ -162,6 +211,8 @@ def start_chat_loop(provider: str = "gemini", session_name: str = "default") -> 
     sessions_dir = os.path.expanduser(cfg["sessions_dir"])
 
     os.makedirs(sessions_dir, exist_ok=True)
+
+    system_prompt = _build_system_prompt()
 
     history = session.load(_session_file(sessions_dir, current_session))
 
@@ -178,7 +229,7 @@ def start_chat_loop(provider: str = "gemini", session_name: str = "default") -> 
             f"Type /help for commands.\n"
         )
 
-    chat = get_chat(current_provider, SYSTEM_PROMPT, TOOLS, history, model=current_model)
+    chat = get_chat(current_provider, system_prompt, TOOLS, history, model=current_model)
 
     while True:
         try:
@@ -205,7 +256,7 @@ def start_chat_loop(provider: str = "gemini", session_name: str = "default") -> 
                 path = _session_file(sessions_dir, current_session)
                 if os.path.exists(path):
                     os.remove(path)
-                chat = get_chat(current_provider, SYSTEM_PROMPT, TOOLS, [], model=current_model)
+                chat = get_chat(current_provider, system_prompt, TOOLS, [], model=current_model)
                 console.print(f"[dim]Session [bold]{current_session}[/bold] cleared.[/dim]\n")
 
             elif cmd == "/model":
@@ -214,7 +265,7 @@ def start_chat_loop(provider: str = "gemini", session_name: str = "default") -> 
                 else:
                     current_model = arg
                     history = session.load(_session_file(sessions_dir, current_session))
-                    chat = get_chat(current_provider, SYSTEM_PROMPT, TOOLS, history, model=current_model)
+                    chat = get_chat(current_provider, system_prompt, TOOLS, history, model=current_model)
                     console.print(f"[dim]Switched to model: {current_model}.[/dim]\n")
 
             elif cmd == "/provider":
@@ -224,7 +275,7 @@ def start_chat_loop(provider: str = "gemini", session_name: str = "default") -> 
                     current_provider = arg
                     current_model = cfg["models"].get(current_provider, current_provider)
                     history = session.load(_session_file(sessions_dir, current_session))
-                    chat = get_chat(current_provider, SYSTEM_PROMPT, TOOLS, history, model=current_model)
+                    chat = get_chat(current_provider, system_prompt, TOOLS, history, model=current_model)
                     console.print(f"[dim]Switched to {current_provider} ({current_model}).[/dim]\n")
 
             elif cmd == "/sessions":
@@ -236,7 +287,7 @@ def start_chat_loop(provider: str = "gemini", session_name: str = "default") -> 
                 else:
                     current_session = arg
                     history = session.load(_session_file(sessions_dir, current_session))
-                    chat = get_chat(current_provider, SYSTEM_PROMPT, TOOLS, history, model=current_model)
+                    chat = get_chat(current_provider, system_prompt, TOOLS, history, model=current_model)
                     if history:
                         console.print(
                             f"[dim]Switched to session [bold]{current_session}[/bold] "
@@ -255,14 +306,14 @@ def start_chat_loop(provider: str = "gemini", session_name: str = "default") -> 
                     console.print(f"[dim]Deleted session [bold]{target}[/bold].[/dim]")
                     if target == current_session:
                         current_session = "default"
-                        chat = get_chat(current_provider, SYSTEM_PROMPT, TOOLS, [], model=current_model)
+                        chat = get_chat(current_provider, system_prompt, TOOLS, [], model=current_model)
                         console.print(f"[dim]Switched to session [bold]{current_session}[/bold].[/dim]")
                     console.print()
 
             elif cmd == "/compact":
                 chat = _compact_session(
                     chat, sessions_dir, current_session,
-                    current_provider, current_model, cfg,
+                    current_provider, current_model, cfg, system_prompt,
                 )
 
             elif cmd == "/config":
@@ -320,9 +371,31 @@ def start_chat_loop(provider: str = "gemini", session_name: str = "default") -> 
             results = []
             for tc in tool_calls:
                 label = tc.args.get("command") or tc.args.get("path") or tc.name
-                console.print(
-                    Panel(f"[dim]{label}[/dim]", title=f"[bold cyan]{tc.name}[/bold cyan]", expand=False)
-                )
+
+                if tc.name == "bash" and _is_destructive(tc.args.get("command", "")):
+                    console.print(
+                        Panel(
+                            f"[yellow]{label}[/yellow]",
+                            title="[bold red]bash — destructive, confirm?[/bold red]",
+                            expand=False,
+                        )
+                    )
+                    try:
+                        confirm = input("Run? [y/N] ").strip().lower()
+                    except (KeyboardInterrupt, EOFError):
+                        confirm = "n"
+                    if confirm != "y":
+                        results.append(ToolResult(
+                            name=tc.name,
+                            output="User explicitly declined this destructive operation. Do NOT attempt the same operation through any other method or tool.",
+                            id=tc.id,
+                        ))
+                        continue
+                else:
+                    console.print(
+                        Panel(f"[dim]{label}[/dim]", title=f"[bold cyan]{tc.name}[/bold cyan]", expand=False)
+                    )
+
                 output = EXECUTORS[tc.name](**tc.args)
                 console.print(f"[dim]{output[:600]}[/dim]\n")
                 results.append(ToolResult(name=tc.name, output=output, id=tc.id))
@@ -352,5 +425,5 @@ def start_chat_loop(provider: str = "gemini", session_name: str = "default") -> 
         if chat.last_usage.input_tokens > threshold:
             chat = _compact_session(
                 chat, sessions_dir, current_session,
-                current_provider, current_model, cfg,
+                current_provider, current_model, cfg, system_prompt,
             )
