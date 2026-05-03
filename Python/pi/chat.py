@@ -1,7 +1,6 @@
 import os
 import glob
 import platform
-import re
 import subprocess
 import sys
 from datetime import datetime
@@ -39,31 +38,6 @@ COMPACT_PROMPT = (
     "Include: the main goal, key decisions made, important code written or changed, "
     "and any context needed to continue. Be thorough — this replaces the full history."
 )
-
-# Matches shell commands AND Python/PowerShell equivalents that are irreversible or destructive
-_DESTRUCTIVE_RE = re.compile(
-    r"\brm\s"
-    r"|\brmdir\b"
-    r"|\bdel\s"
-    r"|\brd\s"
-    r"|git\s+reset\s+--hard"
-    r"|git\s+clean\b"
-    r"|git\s+push\b.*(?:-f\b|--force\b)"
-    r"|\bkill\b"
-    r"|\bpkill\b"
-    r"|\bdrop\s+table\b"
-    r"|\btruncate\s+table\b"
-    r"|os\.remove\b"
-    r"|os\.unlink\b"
-    r"|shutil\.rmtree\b"
-    r"|pathlib.*\.unlink\b"
-    r"|Remove-Item\b",
-    re.IGNORECASE,
-)
-
-
-def _is_destructive(command: str) -> bool:
-    return bool(_DESTRUCTIVE_RE.search(command))
 
 
 def _build_system_prompt() -> str:
@@ -388,29 +362,9 @@ def start_chat_loop(provider: str = "gemini", session_name: str = "default") -> 
                     results.append(ToolResult(name=tc.name, output=output, id=tc.id))
                     continue
 
-                if tc.name == "bash" and _is_destructive(tc.args.get("command", "")):
-                    console.print(
-                        Panel(
-                            f"[yellow]{label}[/yellow]",
-                            title="[bold red]bash — destructive, confirm?[/bold red]",
-                            expand=False,
-                        )
-                    )
-                    try:
-                        confirm = input("Run? [y/N] ").strip().lower()
-                    except (KeyboardInterrupt, EOFError):
-                        confirm = "n"
-                    if confirm != "y":
-                        results.append(ToolResult(
-                            name=tc.name,
-                            output="User explicitly declined this destructive operation. Do NOT attempt the same operation through any other method or tool.",
-                            id=tc.id,
-                        ))
-                        continue
-                else:
-                    console.print(
-                        Panel(f"[dim]{label}[/dim]", title=f"[bold cyan]{tc.name}[/bold cyan]", expand=False)
-                    )
+                console.print(
+                    Panel(f"[dim]{label}[/dim]", title=f"[bold cyan]{tc.name}[/bold cyan]", expand=False)
+                )
 
                 output = EXECUTORS[tc.name](**tc.args)
                 console.print(f"[dim]{output[:600]}[/dim]\n")
