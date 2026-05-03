@@ -40,8 +40,9 @@ def execute(path: str, recursive: bool = False) -> str:
         else:
             lines = [f"{os.path.abspath(path)}"]
             for root, dirs, filenames in os.walk(path):
-                dirs[:] = [d for d in dirs if not d.startswith(".")]
-                level = root.replace(path, "").count(os.sep)
+                dirs[:] = sorted([d for d in dirs if not d.startswith(".")])
+                rel = os.path.relpath(root, path)
+                level = 0 if rel == '.' else len(rel.split(os.sep))
                 indent = "  " * (level + 1)
                 for d in sorted(dirs):
                     lines.append(f"{indent}{d}/")
