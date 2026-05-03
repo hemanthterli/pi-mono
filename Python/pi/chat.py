@@ -23,8 +23,9 @@ console = Console()
 _COST_PER_1M: dict[str, tuple[float, float]] = {
     "gpt-4o-mini": (0.15, 0.60),
     "gpt-4o": (2.50, 10.00),
-    "gemini-2.5-flash": (0.15, 0.60),
     "gemini-2.0-flash": (0.10, 0.40),
+    "gemini-1.5-flash": (0.075, 0.30),
+    "gemini-1.5-pro": (1.25, 5.00),
     "gemini-3-flash-preview": (0.10, 0.40),
 }
 
@@ -206,11 +207,9 @@ def start_chat_loop(provider: str = "gemini", session_name: str = "default") -> 
                     console.print(f"[dim]Current model: {current_model}[/dim]\n")
                 else:
                     current_model = arg
-                    path = _session_file(sessions_dir, current_session)
-                    if os.path.exists(path):
-                        os.remove(path)
-                    chat = get_chat(current_provider, SYSTEM_PROMPT, TOOLS, [], model=current_model)
-                    console.print(f"[dim]Switched to model: {current_model}. Session cleared.[/dim]\n")
+                    history = session.load(_session_file(sessions_dir, current_session))
+                    chat = get_chat(current_provider, SYSTEM_PROMPT, TOOLS, history, model=current_model)
+                    console.print(f"[dim]Switched to model: {current_model}.[/dim]\n")
 
             elif cmd == "/provider":
                 if arg not in ("gemini", "openai"):
@@ -218,11 +217,9 @@ def start_chat_loop(provider: str = "gemini", session_name: str = "default") -> 
                 else:
                     current_provider = arg
                     current_model = cfg["models"].get(current_provider, current_provider)
-                    path = _session_file(sessions_dir, current_session)
-                    if os.path.exists(path):
-                        os.remove(path)
-                    chat = get_chat(current_provider, SYSTEM_PROMPT, TOOLS, [], model=current_model)
-                    console.print(f"[dim]Switched to {current_provider} ({current_model}). Session cleared.[/dim]\n")
+                    history = session.load(_session_file(sessions_dir, current_session))
+                    chat = get_chat(current_provider, SYSTEM_PROMPT, TOOLS, history, model=current_model)
+                    console.print(f"[dim]Switched to {current_provider} ({current_model}).[/dim]\n")
 
             elif cmd == "/sessions":
                 _list_sessions(sessions_dir)
@@ -324,9 +321,15 @@ def start_chat_loop(provider: str = "gemini", session_name: str = "default") -> 
                 console.print(f"[dim]{output[:600]}[/dim]\n")
                 results.append(ToolResult(name=tc.name, output=output, id=tc.id))
 
-            text_buffer, tool_calls = chat.send(results)
+            new_text, tool_calls = chat.send(results)
+            if new_text:
+                if not got_text:
+                    console.print("\n[bold green]Pi:[/bold green]")
+                    got_text = True
+                console.print(Markdown(new_text))
+                text_buffer += "\n" + new_text
 
-        # Final response after tool calls (non-streamed)
+        # Final response after tool calls (non-streamed) - ONLY if we haven't printed anything yet
         if not got_text and text_buffer:
             console.print()
             console.print("[bold green]Pi:[/bold green]")

@@ -6,7 +6,7 @@ CONFIG_PATH = Path.home() / ".pi" / "config.json"
 DEFAULTS: dict = {
     "provider": "gemini",
     "models": {
-        "gemini": "gemini-3-flash-preview",
+        "gemini": "gemini-2.0-flash",
         "openai": "gpt-4o-mini",
     },
     "sessions_dir": "sessions",
@@ -46,7 +46,12 @@ def set_value(key: str, value: str) -> tuple[bool, str]:
     elif key.startswith("model."):
         provider_name = key.split(".", 1)[1]
         cfg["models"][provider_name] = value
+    elif key == "compact_threshold":
+        try:
+            cfg["compact_threshold"] = int(value)
+        except ValueError:
+            return False, f"compact_threshold must be an integer, got {value!r}"
     else:
-        return False, f"Unknown key {key!r}. Valid: provider, sessions_dir, model.<provider>"
+        return False, f"Unknown key {key!r}. Valid: provider, sessions_dir, model.<provider>, compact_threshold"
     save(cfg)
     return True, f"Set {key} = {value!r}"
