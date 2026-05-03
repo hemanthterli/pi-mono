@@ -40,7 +40,13 @@ SYSTEM_PROMPT = (
     "You have tools to run shell commands, read/write/edit files, list directories, and search file contents. "
     "Prefer 'edit' over 'write' for targeted changes. "
     "Use 'grep' instead of 'read' when searching for something specific across files. "
-    "Be concise and helpful."
+    "\n\nCRITICAL: When performing tasks that require multiple tool calls, you MUST use the text buffer to "
+    "provide a brief status update after each tool result. Explain what you've found and what your next "
+    "step is. This is essential for the user to follow your progress."
+    "\n\nIf a file is truncated during a 'read', you MUST acknowledge this and decide whether to read the "
+    "next chunk using the 'offset' parameter. "
+    "Always use 'recursive=True' with 'ls' when you need a comprehensive view of the project structure. "
+    "Be concise, technical, and helpful."
 )
 
 TOOLS = [

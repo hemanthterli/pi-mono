@@ -16,7 +16,7 @@ DEFINITION = ToolDefinition(
                 "description": "Whether to list subdirectories recursively",
             },
         },
-        "required": ["path"],
+        "required": ["path", "recursive"],
     },
 )
 
