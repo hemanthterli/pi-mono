@@ -18,6 +18,7 @@ from pi.tools import write as write_tool
 from pi.tools import edit as edit_tool
 from pi.tools import grep as grep_tool
 from pi.tools import ls as ls_tool
+from pi.tools import ask_user as ask_user_tool
 from pi import session
 from pi import config as _config
 
@@ -93,7 +94,14 @@ def _build_system_prompt() -> str:
         "  - After each tool result, give a brief status update: what you found and your next step.\n"
         "  - If a file read is truncated, use the 'offset' parameter to continue reading.\n"
         "  - Use recursive=True with 'ls' for a comprehensive view of project structure.\n"
-        "  - Be concise, technical, and direct."
+        "  - Be concise, technical, and direct.\n\n"
+        "Safety:\n"
+        "  - Before any operation that deletes files, removes directories, or makes irreversible changes,\n"
+        "    use the 'ask_user' tool to describe what you are about to do and get explicit confirmation.\n"
+        "  - If the user declines, do NOT attempt the same operation through any other method or tool.\n"
+        "  - This applies to shell commands, Python one-liners, file rewrites, and any other approach.\n"
+        "  - Use 'ask_user' whenever the task is ambiguous, multiple valid approaches exist, or you\n"
+        "    need more context before proceeding. Prefer asking over guessing."
     )
 
 
@@ -104,6 +112,7 @@ TOOLS = [
     edit_tool.DEFINITION,
     grep_tool.DEFINITION,
     ls_tool.DEFINITION,
+    ask_user_tool.DEFINITION,
 ]
 
 EXECUTORS = {
@@ -113,6 +122,7 @@ EXECUTORS = {
     "edit": edit_tool.execute,
     "grep": grep_tool.execute,
     "ls": ls_tool.execute,
+    "ask_user": ask_user_tool.execute,
 }
 
 
@@ -184,7 +194,7 @@ def _print_usage(usage: Usage, model: str) -> None:
 
 def _compact_session(
     chat, sessions_dir: str, current_session: str,
-    current_provider: str, current_model: str, cfg: dict,
+    current_provider: str, current_model: str,
     system_prompt: str,
 ):
     console.print("[yellow]Context getting long — compacting session history...[/yellow]")
@@ -313,7 +323,7 @@ def start_chat_loop(provider: str = "gemini", session_name: str = "default") -> 
             elif cmd == "/compact":
                 chat = _compact_session(
                     chat, sessions_dir, current_session,
-                    current_provider, current_model, cfg, system_prompt,
+                    current_provider, current_model, system_prompt,
                 )
 
             elif cmd == "/config":
@@ -372,6 +382,12 @@ def start_chat_loop(provider: str = "gemini", session_name: str = "default") -> 
             for tc in tool_calls:
                 label = tc.args.get("command") or tc.args.get("path") or tc.name
 
+                if tc.name == "ask_user":
+                    # Tool manages its own display (prints question, reads input)
+                    output = EXECUTORS[tc.name](**tc.args)
+                    results.append(ToolResult(name=tc.name, output=output, id=tc.id))
+                    continue
+
                 if tc.name == "bash" and _is_destructive(tc.args.get("command", "")):
                     console.print(
                         Panel(
@@ -425,5 +441,5 @@ def start_chat_loop(provider: str = "gemini", session_name: str = "default") -> 
         if chat.last_usage.input_tokens > threshold:
             chat = _compact_session(
                 chat, sessions_dir, current_session,
-                current_provider, current_model, cfg, system_prompt,
+                current_provider, current_model, system_prompt,
             )
