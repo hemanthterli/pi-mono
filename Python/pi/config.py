@@ -51,7 +51,9 @@ def set_value(key: str, value: str) -> tuple[bool, str]:
             cfg["compact_threshold"] = int(value)
         except ValueError:
             return False, f"compact_threshold must be an integer, got {value!r}"
+    elif key == "telegram_token":
+        cfg["telegram_token"] = value
     else:
-        return False, f"Unknown key {key!r}. Valid: provider, sessions_dir, model.<provider>, compact_threshold"
+        return False, f"Unknown key {key!r}. Valid: provider, sessions_dir, model.<provider>, compact_threshold, telegram_token"
     save(cfg)
     return True, f"Set {key} = {value!r}"
