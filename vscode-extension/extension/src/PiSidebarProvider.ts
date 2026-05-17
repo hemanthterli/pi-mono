@@ -170,14 +170,41 @@ export class PiSidebarProvider implements vscode.WebviewViewProvider {
                     align-items: center;
                     justify-content: center;
                 }
+                .attachment-preview img {
+                    cursor: pointer;
+                }
                 .message-image {
                     max-width: 100%;
                     border-radius: 4px;
                     margin-top: 5px;
+                    cursor: pointer;
+                }
+
+                /* Image Modal (Pop-up) */
+                #image-modal {
+                    display: none;
+                    position: fixed;
+                    z-index: 1000;
+                    left: 0;
+                    top: 0;
+                    width: 100%;
+                    height: 100%;
+                    background-color: rgba(0,0,0,0.8);
+                    justify-content: center;
+                    align-items: center;
+                }
+                #image-modal img {
+                    max-width: 90%;
+                    max-height: 90%;
+                    border-radius: 8px;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
                 }
             </style>
         </head>
         <body>
+            <div id="image-modal">
+                <img id="modal-image" src="" alt="Expanded Image" />
+            </div>
             <div id="chat-box"></div>
             <div id="attachments-container"></div>
             <div class="input-container">
@@ -192,6 +219,20 @@ export class PiSidebarProvider implements vscode.WebviewViewProvider {
                 
                 // Track active tool UI elements
                 const activeTools = {};
+
+                // Modal logic
+                const imageModal = document.getElementById('image-modal');
+                const modalImage = document.getElementById('modal-image');
+                
+                imageModal.addEventListener('click', () => {
+                    imageModal.style.display = 'none';
+                    modalImage.src = '';
+                });
+
+                function openModal(imgSrc) {
+                    modalImage.src = imgSrc;
+                    imageModal.style.display = 'flex';
+                }
 
                 function connectWebSocket() {
                     appendSystemMessage('Connecting to Pi backend...');
@@ -265,6 +306,7 @@ export class PiSidebarProvider implements vscode.WebviewViewProvider {
                     
                     const img = document.createElement('img');
                     img.src = base64data;
+                    img.onclick = () => openModal(base64data);
                     
                     const removeBtn = document.createElement('button');
                     removeBtn.className = 'remove-attachment';
@@ -296,6 +338,7 @@ export class PiSidebarProvider implements vscode.WebviewViewProvider {
                         const img = document.createElement('img');
                         img.src = imgData;
                         img.className = 'message-image';
+                        img.onclick = () => openModal(imgData);
                         msg.appendChild(img);
                     });
 
