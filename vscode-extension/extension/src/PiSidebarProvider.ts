@@ -101,7 +101,10 @@ export class PiSidebarProvider implements vscode.WebviewViewProvider {
                             appendMessage('Pi (Question)', data.question);
                             // We will handle routing the next input as an answer
                             window.awaitingAnswer = true;
-                        } else if (data.type === 'error') {
+                        // Handle done event 
+                } else if (data.type === 'done') {
+                    // Do nothing, but the connection stays open!
+                } else if (data.type === 'error') {
                             appendMessage('Error', data.message);
                         }
                     };
