@@ -5,6 +5,10 @@ from typing import Optional, Dict, Any
 import json
 import os
 import asyncio
+from dotenv import load_dotenv
+
+# Load environment variables from .env file before anything else
+load_dotenv()
 
 from pi.ai.providers import get_chat
 from pi.chat import _build_system_prompt, TOOLS, EXECUTORS
@@ -92,7 +96,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     # Pause and WAIT for user reply over the same socket
                     reply_data = await websocket.receive_text()
                     reply_json = json.loads(reply_data)
-                    output = reply_json.get("answer", "User declined to answer.")
+                    output = reply_json.get("answer", reply_json.get("message", "User declined to answer."))
                 else:
                     # Normal tools (bash, read, edit)
                     try:

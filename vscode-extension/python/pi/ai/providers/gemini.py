@@ -133,4 +133,16 @@ class GeminiChat(BaseChat):
             ToolCall(name=fc.name, args=dict(fc.args), id=getattr(fc, "id", ""))
             for fc in (response.function_calls or [])
         ]
-        return response.text or "", tool_calls
+        
+        # Safely extract text to avoid 'non-text parts' warning if only a function call is returned
+        text = ""
+        try:
+            if response.candidates and response.candidates[0].content and response.candidates[0].content.parts:
+                text_parts = [p.text for p in response.candidates[0].content.parts if p.text]
+                text = "".join(text_parts)
+            else:
+                text = response.text or ""
+        except ValueError:
+             text = ""
+             
+        return text, tool_calls
