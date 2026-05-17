@@ -66,7 +66,7 @@ def _build_system_prompt() -> str:
             pass
 
     return (
-        "You are Pi, an AI coding assistant running in the terminal.\n\n"
+        "You are Pi, an AI coding assistant running as a FastAPI backend for a VS Code extension.\n\n"
         f"Environment:\n"
         f"  cwd: {cwd}\n"
         f"  os: {os_name}\n"

@@ -4,11 +4,15 @@ version = "0.1.0"
 description = "Pi — Python AI coding agent"
 requires-python = ">=3.11"
 dependencies = [
+    "fastapi>=0.136.1",
     "google-genai>=1.74.0",
     "openai>=1.0.0",
+    "pydantic>=2.13.3",
     "python-dotenv>=1.2.2",
     "requests>=2.31.0",
     "rich>=13.0.0",
+    "sse-starlette>=3.4.4",
+    "uvicorn>=0.47.0",
 ]
 
 [tool.uv]
