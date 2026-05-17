@@ -18,6 +18,7 @@ from pi.tools import edit as edit_tool
 from pi.tools import grep as grep_tool
 from pi.tools import ls as ls_tool
 from pi.tools import ask_user as ask_user_tool
+from pi.tools import find as find_tool
 from pi import session
 from pi import config as _config
 
@@ -55,16 +56,27 @@ def _build_system_prompt() -> str:
     except Exception:
         git_branch = "unknown"
 
+    pi_md_section = ""
+    pi_md_path = os.path.join(cwd, "pi.md")
+    if os.path.isfile(pi_md_path):
+        try:
+            with open(pi_md_path, "r", encoding="utf-8") as f:
+                pi_md_section = f"\nProject context (from pi.md):\n{f.read().strip()}\n"
+        except OSError:
+            pass
+
     return (
         "You are Pi, an AI coding assistant running in the terminal.\n\n"
         f"Environment:\n"
         f"  cwd: {cwd}\n"
         f"  os: {os_name}\n"
         f"  python: {py_ver}\n"
-        f"  git branch: {git_branch}\n\n"
-        "Guidelines:\n"
+        f"  git branch: {git_branch}\n"
+        + pi_md_section +
+        "\nGuidelines:\n"
         "  - Prefer 'edit' over 'write' for targeted changes to existing files.\n"
         "  - Use 'grep' instead of 'read' when searching for something specific across files.\n"
+        "  - Use 'find' to locate files by name pattern; use 'grep' to search file contents.\n"
         "  - After each tool result, give a brief status update: what you found and your next step.\n"
         "  - If a file read is truncated, use the 'offset' parameter to continue reading.\n"
         "  - Use recursive=True with 'ls' for a comprehensive view of project structure.\n"
@@ -87,6 +99,7 @@ TOOLS = [
     grep_tool.DEFINITION,
     ls_tool.DEFINITION,
     ask_user_tool.DEFINITION,
+    find_tool.DEFINITION,
 ]
 
 EXECUTORS = {
@@ -97,6 +110,7 @@ EXECUTORS = {
     "grep": grep_tool.execute,
     "ls": ls_tool.execute,
     "ask_user": ask_user_tool.execute,
+    "find": find_tool.execute,
 }
 
 
