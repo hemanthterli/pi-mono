@@ -79,56 +79,131 @@ class PiSidebarProvider {
         });
     }
     _getHtmlForWebview(webview) {
-        // Simple HTML for now. Later we will build a React/Svelte/Vanilla JS frontend
-        // that connects to the Python WebSocket server.
         return `<!DOCTYPE html>
         <html lang="en">
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; connect-src ws://localhost:8001;">
             <title>Pi Assistant</title>
+            <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
             <style>
                 body {
                     font-family: var(--vscode-font-family);
                     color: var(--vscode-editor-foreground);
                     background-color: var(--vscode-editor-background);
-                    padding: 10px;
+                    padding: 0;
+                    margin: 0;
+                    display: flex;
+                    flex-direction: column;
+                    height: 100vh;
                 }
                 #chat-box {
-                    height: 80vh;
+                    flex: 1;
                     overflow-y: auto;
-                    margin-bottom: 10px;
+                    padding: 15px;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 10px;
+                }
+                .message {
+                    max-width: 85%;
+                    padding: 8px 12px;
+                    border-radius: 8px;
+                    word-wrap: break-word;
+                    line-height: 1.4;
+                }
+                .message-user {
+                    align-self: flex-end;
+                    background-color: var(--vscode-button-background);
+                    color: var(--vscode-button-foreground);
+                }
+                .message-pi {
+                    align-self: flex-start;
+                    background-color: var(--vscode-editorWidget-background);
+                    border: 1px solid var(--vscode-editorWidget-border);
+                }
+                .message-system {
+                    align-self: center;
+                    font-size: 0.85em;
+                    color: var(--vscode-descriptionForeground);
+                    background: transparent;
+                    padding: 2px 8px;
+                }
+                .tool-details {
+                    margin-top: 5px;
+                    background: var(--vscode-editor-background);
                     border: 1px solid var(--vscode-panel-border);
+                    border-radius: 4px;
                     padding: 5px;
+                    font-family: var(--vscode-editor-font-family);
+                    font-size: 0.9em;
+                }
+                .tool-details summary {
+                    cursor: pointer;
+                    color: var(--vscode-textLink-foreground);
+                    font-weight: bold;
+                    user-select: none;
+                }
+                .tool-details pre {
+                    margin: 5px 0 0 0;
+                    white-space: pre-wrap;
+                    overflow-x: auto;
+                    color: var(--vscode-editor-foreground);
+                }
+                .input-container {
+                    padding: 10px;
+                    background: var(--vscode-editor-background);
+                    border-top: 1px solid var(--vscode-panel-border);
                 }
                 #message-input {
                     width: 100%;
                     box-sizing: border-box;
-                    padding: 8px;
+                    padding: 10px;
                     background: var(--vscode-input-background);
                     color: var(--vscode-input-foreground);
                     border: 1px solid var(--vscode-input-border);
+                    border-radius: 4px;
+                }
+                
+                /* Markdown specific styles */
+                .message-pi p { margin: 0 0 8px 0; }
+                .message-pi p:last-child { margin: 0; }
+                .message-pi pre { 
+                    background: var(--vscode-textCodeBlock-background); 
+                    padding: 8px; 
+                    border-radius: 4px;
+                    overflow-x: auto;
+                }
+                .message-pi code {
+                    background: var(--vscode-textCodeBlock-background);
+                    padding: 2px 4px;
+                    border-radius: 3px;
+                    font-family: var(--vscode-editor-font-family);
                 }
             </style>
         </head>
         <body>
-            <h3>Pi Assistant</h3>
             <div id="chat-box"></div>
-            <input type="text" id="message-input" placeholder="Type a message..." />
+            <div class="input-container">
+                <input type="text" id="message-input" placeholder="Ask Pi something..." />
+            </div>
 
             <script>
                 const vscode = acquireVsCodeApi();
                 const chatBox = document.getElementById('chat-box');
                 const messageInput = document.getElementById('message-input');
                 let ws = null;
+                
+                // Track active tool UI elements
+                const activeTools = {};
 
                 function connectWebSocket() {
-                    appendMessage('System', 'Connecting to Pi backend...');
+                    appendSystemMessage('Connecting to Pi backend...');
                     ws = new WebSocket('ws://localhost:8001/ws/chat');
                     
                     ws.onopen = () => {
-                        appendMessage('System', 'Connected!');
-                        // Send initial message to configure session
+                        appendSystemMessage('Connected!');
                         ws.send(JSON.stringify({
                             session_id: "vscode_session",
                             provider: "gemini",
@@ -139,38 +214,130 @@ class PiSidebarProvider {
                     
                     ws.onmessage = (event) => {
                         const data = JSON.parse(event.data);
+                        
                         if (data.type === 'text') {
-                            appendMessage('Pi', data.content);
+                            appendPiMessage(data.content, false);
                         } else if (data.type === 'tool_start') {
-                            appendMessage('System', \`Executing \${data.name}...\`);
+                            handleToolStart(data.id, data.name, data.args);
+                        } else if (data.type === 'tool_end') {
+                            handleToolEnd(data.id, data.result);
                         } else if (data.type === 'ask_user') {
-                            appendMessage('Pi (Question)', data.question);
-                            // We will handle routing the next input as an answer
+                            appendPiMessage('<strong>Question:</strong> ' + data.question, true);
                             window.awaitingAnswer = true;
+                        } else if (data.type === 'done') {
+                            // Turn finished
                         } else if (data.type === 'error') {
-                            appendMessage('Error', data.message);
+                            appendSystemMessage('Error: ' + data.message);
                         }
+                        
+                        scrollToBottom();
                     };
 
                     ws.onclose = () => {
-                        appendMessage('System', 'Disconnected from backend.');
+                        appendSystemMessage('Disconnected from backend.');
                         ws = null;
                     };
                 }
 
-                function appendMessage(sender, text) {
-                    const msg = document.createElement('div');
-                    msg.innerHTML = \`<strong>\${sender}:</strong> \${text.replace(/\\n/g, '<br>')}\`;
-                    msg.style.marginBottom = '8px';
-                    chatBox.appendChild(msg);
+                function scrollToBottom() {
                     chatBox.scrollTop = chatBox.scrollHeight;
+                }
+
+                function appendUserMessage(text) {
+                    const msg = document.createElement('div');
+                    msg.className = 'message message-user';
+                    msg.textContent = text; // Prevent XSS, raw text
+                    chatBox.appendChild(msg);
+                    scrollToBottom();
+                }
+
+                // We keep track of the last Pi message div so we can stream text into it
+                let currentPiMessageDiv = null;
+                let currentPiTextBuffer = "";
+
+                function appendPiMessage(chunk, isHtml = false) {
+                    if (!currentPiMessageDiv) {
+                        currentPiMessageDiv = document.createElement('div');
+                        currentPiMessageDiv.className = 'message message-pi';
+                        chatBox.appendChild(currentPiMessageDiv);
+                    }
+                    
+                    if (isHtml) {
+                        currentPiMessageDiv.innerHTML += chunk;
+                    } else {
+                        currentPiTextBuffer += chunk;
+                        // Use marked to parse the accumulated text
+                        if (window.marked) {
+                            currentPiMessageDiv.innerHTML = marked.parse(currentPiTextBuffer);
+                        } else {
+                            currentPiMessageDiv.textContent = currentPiTextBuffer;
+                        }
+                    }
+                    scrollToBottom();
+                }
+                
+                // When Pi starts using tools, we close the current text bubble
+                function breakPiMessage() {
+                    currentPiMessageDiv = null;
+                    currentPiTextBuffer = "";
+                }
+
+                function appendSystemMessage(text) {
+                    breakPiMessage();
+                    const msg = document.createElement('div');
+                    msg.className = 'message message-system';
+                    msg.textContent = text;
+                    chatBox.appendChild(msg);
+                    scrollToBottom();
+                }
+
+                function handleToolStart(id, name, args) {
+                    breakPiMessage();
+                    const container = document.createElement('div');
+                    container.className = 'message message-pi';
+                    
+                    const details = document.createElement('details');
+                    details.className = 'tool-details';
+                    // Open by default while running
+                    details.open = true; 
+                    
+                    const summary = document.createElement('summary');
+                    summary.innerHTML = \`⚙️ Executing <strong>\${name}</strong>\`;
+                    
+                    const argsPre = document.createElement('pre');
+                    argsPre.textContent = "Args: " + JSON.stringify(args, null, 2);
+                    argsPre.style.color = "var(--vscode-descriptionForeground)";
+                    
+                    const resultPre = document.createElement('pre');
+                    resultPre.className = 'tool-result';
+                    resultPre.innerHTML = '<em>Running...</em>';
+                    
+                    details.appendChild(summary);
+                    details.appendChild(argsPre);
+                    details.appendChild(resultPre);
+                    container.appendChild(details);
+                    
+                    chatBox.appendChild(container);
+                    activeTools[id] = resultPre;
+                    scrollToBottom();
+                }
+
+                function handleToolEnd(id, result) {
+                    if (activeTools[id]) {
+                        activeTools[id].textContent = "Output:\\n" + result;
+                        // Optionally close the details tag once done, or leave it open
+                        // activeTools[id].parentElement.open = false; 
+                        delete activeTools[id];
+                    }
+                    scrollToBottom();
                 }
 
                 messageInput.addEventListener('keypress', (e) => {
                     if (e.key === 'Enter' && messageInput.value.trim() !== '') {
                         const text = messageInput.value.trim();
-                        appendMessage('You', text);
+                        appendUserMessage(text);
                         messageInput.value = '';
+                        breakPiMessage(); // Break Pi bubble so new response gets a new bubble
 
                         if (ws && ws.readyState === WebSocket.OPEN) {
                             if (window.awaitingAnswer) {
@@ -180,15 +347,12 @@ class PiSidebarProvider {
                                 ws.send(JSON.stringify({ message: text }));
                             }
                         } else if (!ws || ws.readyState === WebSocket.CLOSED) {
-                            // If sending a new message while disconnected, connect and send
                             connectWebSocket();
-                            // Note: for this simple prototype, the message won't be sent immediately 
-                            // after reconnect. A robust frontend will queue it.
+                            // In a real app we'd queue the message. Here we'll just force a reconnect.
                         }
                     }
                 });
 
-                // Auto-connect on load
                 connectWebSocket();
             </script>
         </body>
