@@ -279,8 +279,7 @@ export class PiSidebarProvider implements vscode.WebviewViewProvider {
                 function handleToolEnd(id, result) {
                     if (activeTools[id]) {
                         activeTools[id].textContent = "Output:\\n" + result;
-                        // Optionally close the details tag once done, or leave it open
-                        // activeTools[id].parentElement.open = false; 
+                        activeTools[id].parentElement.open = false; 
                         delete activeTools[id];
                     }
                     scrollToBottom();
