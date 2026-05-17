@@ -135,12 +135,53 @@ export class PiSidebarProvider implements vscode.WebviewViewProvider {
                     border-radius: 3px;
                     font-family: var(--vscode-editor-font-family);
                 }
+                
+                /* Image specific styles */
+                #attachments-container {
+                    display: flex;
+                    gap: 10px;
+                    padding: 0 10px;
+                    overflow-x: auto;
+                    background: var(--vscode-editor-background);
+                }
+                .attachment-preview {
+                    position: relative;
+                    display: inline-block;
+                    margin-bottom: 5px;
+                }
+                .attachment-preview img {
+                    height: 60px;
+                    border-radius: 4px;
+                    border: 1px solid var(--vscode-panel-border);
+                }
+                .remove-attachment {
+                    position: absolute;
+                    top: -5px;
+                    right: -5px;
+                    background: var(--vscode-badge-background);
+                    color: var(--vscode-badge-foreground);
+                    border: none;
+                    border-radius: 50%;
+                    width: 20px;
+                    height: 20px;
+                    font-size: 12px;
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                }
+                .message-image {
+                    max-width: 100%;
+                    border-radius: 4px;
+                    margin-top: 5px;
+                }
             </style>
         </head>
         <body>
             <div id="chat-box"></div>
+            <div id="attachments-container"></div>
             <div class="input-container">
-                <input type="text" id="message-input" placeholder="Ask Pi something..." />
+                <input type="text" id="message-input" placeholder="Ask Pi something... (Paste images with Ctrl+V)" />
             </div>
 
             <script>
@@ -197,10 +238,67 @@ export class PiSidebarProvider implements vscode.WebviewViewProvider {
                     chatBox.scrollTop = chatBox.scrollHeight;
                 }
 
-                function appendUserMessage(text) {
+                let pendingImages = [];
+                const attachmentsContainer = document.getElementById('attachments-container');
+
+                // Handle pasting images
+                window.addEventListener('paste', (e) => {
+                    const items = e.clipboardData.items;
+                    for (let i = 0; i < items.length; i++) {
+                        if (items[i].type.indexOf('image') !== -1) {
+                            const blob = items[i].getAsFile();
+                            const reader = new FileReader();
+                            reader.onload = (event) => {
+                                const base64data = event.target.result;
+                                addImageToPending(base64data);
+                            };
+                            reader.readAsDataURL(blob);
+                        }
+                    }
+                });
+
+                function addImageToPending(base64data) {
+                    pendingImages.push(base64data);
+                    
+                    const previewDiv = document.createElement('div');
+                    previewDiv.className = 'attachment-preview';
+                    
+                    const img = document.createElement('img');
+                    img.src = base64data;
+                    
+                    const removeBtn = document.createElement('button');
+                    removeBtn.className = 'remove-attachment';
+                    removeBtn.textContent = 'x';
+                    removeBtn.onclick = () => {
+                        const index = pendingImages.indexOf(base64data);
+                        if (index > -1) {
+                            pendingImages.splice(index, 1);
+                        }
+                        previewDiv.remove();
+                    };
+                    
+                    previewDiv.appendChild(img);
+                    previewDiv.appendChild(removeBtn);
+                    attachmentsContainer.appendChild(previewDiv);
+                }
+
+                function appendUserMessage(text, images = []) {
                     const msg = document.createElement('div');
                     msg.className = 'message message-user';
-                    msg.textContent = text; // Prevent XSS, raw text
+                    
+                    if (text) {
+                        const textNode = document.createElement('div');
+                        textNode.textContent = text;
+                        msg.appendChild(textNode);
+                    }
+
+                    images.forEach(imgData => {
+                        const img = document.createElement('img');
+                        img.src = imgData;
+                        img.className = 'message-image';
+                        msg.appendChild(img);
+                    });
+
                     chatBox.appendChild(msg);
                     scrollToBottom();
                 }
@@ -286,18 +384,25 @@ export class PiSidebarProvider implements vscode.WebviewViewProvider {
                 }
 
                 messageInput.addEventListener('keypress', (e) => {
-                    if (e.key === 'Enter' && messageInput.value.trim() !== '') {
+                    if (e.key === 'Enter' && (messageInput.value.trim() !== '' || pendingImages.length > 0)) {
                         const text = messageInput.value.trim();
-                        appendUserMessage(text);
+                        const imagesToSend = [...pendingImages];
+                        
+                        appendUserMessage(text, imagesToSend);
                         messageInput.value = '';
+                        
+                        // Clear pending images UI
+                        pendingImages = [];
+                        attachmentsContainer.innerHTML = '';
+                        
                         breakPiMessage(); // Break Pi bubble so new response gets a new bubble
 
                         if (ws && ws.readyState === WebSocket.OPEN) {
                             if (window.awaitingAnswer) {
-                                ws.send(JSON.stringify({ answer: text, message: text }));
+                                ws.send(JSON.stringify({ answer: text, message: text, images: imagesToSend }));
                                 window.awaitingAnswer = false;
                             } else {
-                                ws.send(JSON.stringify({ message: text }));
+                                ws.send(JSON.stringify({ message: text, images: imagesToSend }));
                             }
                         } else if (!ws || ws.readyState === WebSocket.CLOSED) {
                             connectWebSocket();
