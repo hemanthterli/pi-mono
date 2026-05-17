@@ -7,7 +7,7 @@ from datetime import datetime
 @dataclass
 class Message:
     role: str           # "user", "assistant", "tool"
-    content: str | None = None
+    content: str | list | None = None
     tool_calls: list[dict] | None = None  # [{"id": ..., "name": ..., "args": {...}}]
     tool_call_id: str | None = None       # for role="tool": which call this answers
     name: str | None = None               # for role="tool": which tool ran
@@ -39,7 +39,7 @@ def _write(path: str, entry: dict) -> None:
         f.write(json.dumps(entry) + "\n")
 
 
-def append(path: str, role: str, content: str) -> None:
+def append(path: str, role: str, content: str | list | None) -> None:
     _write(path, {"role": role, "content": content, "timestamp": datetime.now().isoformat()})
 
 

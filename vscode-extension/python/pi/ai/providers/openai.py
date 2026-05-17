@@ -25,7 +25,27 @@ class OpenAIChat(BaseChat):
         self._messages: list[dict] = [{"role": "system", "content": system_prompt}]
         for msg in history:
             if msg.role == "user":
-                self._messages.append({"role": "user", "content": msg.content or ""})
+                content = msg.content
+                if isinstance(content, list):
+                    openai_content = []
+                    for item in content:
+                        if item.get("type") == "text":
+                            openai_content.append({"type": "text", "text": item["text"]})
+                        elif item.get("type") == "image":
+                            import base64
+                            try:
+                                with open(item["path"], "rb") as f:
+                                    b64_data = base64.b64encode(f.read()).decode("utf-8")
+                                ext = os.path.splitext(item["path"])[1].lower()
+                                mime = "image/jpeg" if ext in [".jpg", ".jpeg"] else "image/webp" if ext == ".webp" else "image/png"
+                                openai_content.append({
+                                    "type": "image_url",
+                                    "image_url": {"url": f"data:{mime};base64,{b64_data}"}
+                                })
+                            except Exception as e:
+                                print(f"Error loading image history for OpenAI: {e}")
+                    content = openai_content
+                self._messages.append({"role": "user", "content": content or ""})
             elif msg.role == "assistant" and not msg.tool_calls:
                 self._messages.append({"role": "assistant", "content": msg.content})
             elif msg.role == "assistant" and msg.tool_calls:
@@ -52,8 +72,29 @@ class OpenAIChat(BaseChat):
                 })
         self.last_usage = Usage()
 
-    def send_stream(self, message: str):
-        self._messages.append({"role": "user", "content": message})
+    def send_stream(self, message: str | list):
+        content = message
+        if isinstance(content, list):
+            openai_content = []
+            for item in content:
+                if item.get("type") == "text":
+                    openai_content.append({"type": "text", "text": item["text"]})
+                elif item.get("type") == "image":
+                    import base64
+                    try:
+                        with open(item["path"], "rb") as f:
+                            b64_data = base64.b64encode(f.read()).decode("utf-8")
+                        ext = os.path.splitext(item["path"])[1].lower()
+                        mime = "image/jpeg" if ext in [".jpg", ".jpeg"] else "image/webp" if ext == ".webp" else "image/png"
+                        openai_content.append({
+                            "type": "image_url",
+                            "image_url": {"url": f"data:{mime};base64,{b64_data}"}
+                        })
+                    except Exception as e:
+                        print(f"Error loading image for OpenAI: {e}")
+            content = openai_content
+        
+        self._messages.append({"role": "user", "content": content})
         self.last_usage = Usage()
         stream = self._client.chat.completions.create(
             model=self._model,

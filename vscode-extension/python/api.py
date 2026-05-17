@@ -6,6 +6,8 @@ import json
 import os
 import sys
 import asyncio
+import base64
+import uuid
 from dotenv import load_dotenv
 
 # Load environment variables from .env file before anything else
@@ -15,6 +17,37 @@ from pi.ai.providers import get_chat
 from pi.chat import _build_system_prompt, TOOLS, EXECUTORS
 from pi import session as session_manager
 from pi.ai.base import ToolResult
+
+def save_base64_images(session_id: str, images_b64: list) -> list:
+    if not images_b64:
+        return []
+    
+    img_dir = os.path.expanduser(f"~/.pi/sessions/images/{session_id}")
+    os.makedirs(img_dir, exist_ok=True)
+    
+    saved_paths = []
+    for b64 in images_b64:
+        # e.g., "data:image/png;base64,iVBORw0KGgo..."
+        if "," in b64:
+            header, data = b64.split(",", 1)
+            ext = ".png" # default
+            if "image/jpeg" in header: ext = ".jpg"
+            elif "image/webp" in header: ext = ".webp"
+        else:
+            data = b64
+            ext = ".png"
+            
+        try:
+            raw_bytes = base64.b64decode(data)
+            file_name = f"{uuid.uuid4().hex}{ext}"
+            file_path = os.path.join(img_dir, file_name)
+            with open(file_path, "wb") as f:
+                f.write(raw_bytes)
+            saved_paths.append(file_path)
+        except Exception as e:
+            print(f"Error decoding/saving image: {e}")
+            
+    return saved_paths
 
 app = FastAPI(title="Pi WebSocket API")
 
@@ -52,10 +85,14 @@ async def websocket_endpoint(websocket: WebSocket):
         provider = req.get("provider", "gemini")
         model = req.get("model", "gemini-2.5-pro")
         user_message = req.get("message", "")
+        images_b64 = req.get("images", [])
         
         sessions_dir = os.path.expanduser("~/.pi/sessions")
         os.makedirs(sessions_dir, exist_ok=True)
         session_file = os.path.join(sessions_dir, f"{session_id}.jsonl")
+        
+        # Save any initially provided images
+        image_paths = save_base64_images(session_id, images_b64)
         
         # Load history and initialize chat
         history = session_manager.load(session_file) if user_message else []
@@ -69,7 +106,10 @@ async def websocket_endpoint(websocket: WebSocket):
                     data = await websocket.receive_text()
                     req = json.loads(data)
                     user_message = req.get("message", "")
-                    if not user_message:
+                    images_b64 = req.get("images", [])
+                    image_paths = save_base64_images(session_id, images_b64)
+                    
+                    if not user_message and not image_paths:
                         continue
                     
                     # If this is a new message and history is empty, reload it now that we have a message
@@ -77,14 +117,24 @@ async def websocket_endpoint(websocket: WebSocket):
                         history = session_manager.load(session_file)
                         chat = get_chat(provider, system_prompt, TOOLS, history, model=model)
 
-                # Save user message
-                session_manager.append(session_file, "user", user_message)
+                # Save user message and prepare LLM input
+                if image_paths:
+                    content_list = []
+                    if user_message:
+                        content_list.append({"type": "text", "text": user_message})
+                    for path in image_paths:
+                        content_list.append({"type": "image", "path": path})
+                    session_manager.append(session_file, "user", content_list)
+                    llm_input = content_list
+                else:
+                    session_manager.append(session_file, "user", user_message)
+                    llm_input = user_message
                 
                 tool_calls = []
                 text_buffer = ""
                 
                 # 1. Stream initial LLM response
-                for chunk in chat.send_stream(user_message):
+                for chunk in chat.send_stream(llm_input):
                     if isinstance(chunk, str):
                         text_buffer += chunk
                         await websocket.send_json({"type": "text", "content": chunk})
@@ -157,8 +207,9 @@ async def websocket_endpoint(websocket: WebSocket):
                 # Signal completion of this turn
                 await websocket.send_json({"type": "done"})
                 
-                # Clear user_message so the loop waits for the next one
+                # Clear user_message and image_paths so the loop waits for the next one
                 user_message = ""
+                image_paths = []
                 
             except WebSocketDisconnect:
                 print("Client disconnected normally during loop")

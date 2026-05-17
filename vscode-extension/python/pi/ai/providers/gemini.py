@@ -34,9 +34,27 @@ def _to_gemini_history(history: list) -> list[types.Content]:
     while i < len(history):
         msg = history[i]
         if msg.role == "user":
+            parts = []
+            if isinstance(msg.content, list):
+                for item in msg.content:
+                    if item["type"] == "text":
+                        parts.append(types.Part.from_text(text=item["text"]))
+                    elif item["type"] == "image":
+                        try:
+                            import os
+                            with open(item["path"], "rb") as f:
+                                raw_bytes = f.read()
+                            ext = os.path.splitext(item["path"])[1].lower()
+                            mime = "image/jpeg" if ext in [".jpg", ".jpeg"] else "image/webp" if ext == ".webp" else "image/png"
+                            parts.append(types.Part.from_bytes(data=raw_bytes, mime_type=mime))
+                        except Exception as e:
+                            print(f"Error loading history image {item['path']}: {e}")
+            else:
+                parts.append(types.Part.from_text(text=msg.content or ""))
+                
             result.append(types.Content(
                 role="user",
-                parts=[types.Part.from_text(text=msg.content or "")],
+                parts=parts,
             ))
             i += 1
         elif msg.role == "assistant":
@@ -92,9 +110,25 @@ class GeminiChat(BaseChat):
         )
         self.last_usage = Usage()
 
-    def send_stream(self, message: str):
+    def send_stream(self, message: str | list):
         self.last_usage = Usage()
         tool_calls = []
+        
+        # Convert message to list of Parts if it's a multimodal list
+        if isinstance(message, list):
+            parts = []
+            for item in message:
+                if item.get("type") == "text":
+                    parts.append(types.Part.from_text(text=item["text"]))
+                elif item.get("type") == "image":
+                    import os
+                    with open(item["path"], "rb") as f:
+                        raw_bytes = f.read()
+                    ext = os.path.splitext(item["path"])[1].lower()
+                    mime = "image/jpeg" if ext in [".jpg", ".jpeg"] else "image/webp" if ext == ".webp" else "image/png"
+                    parts.append(types.Part.from_bytes(data=raw_bytes, mime_type=mime))
+            message = parts
+
         for chunk in self._chat.send_message_stream(message):
             if chunk.text:
                 yield chunk.text
