@@ -150,20 +150,26 @@ def _print_config(cfg: dict) -> None:
     console.print()
 
 
+SLASH_COMMANDS = [
+    {"command": "/help", "description": "Show this help message"},
+    {"command": "/clear", "description": "Wipe the current session's history"},
+    {"command": "/model [name]", "description": "Show current model or switch to a new one"},
+    {"command": "/provider <name>", "description": "Switch provider: gemini or openai"},
+    {"command": "/sessions", "description": "List all saved sessions"},
+    {"command": "/session <name>", "description": "Switch to a named session (creates if new)"},
+    {"command": "/delete [name]", "description": "Delete a session (default: current)"},
+    {"command": "/config", "description": "Show current config"},
+    {"command": "/config set <key> <value>", "description": "Save a config value persistently"},
+    {"command": "/compact", "description": "Summarize and compress the current session history"},
+]
+
+
 def _print_help() -> None:
     table = Table(title="Pi Slash Commands", show_header=True, header_style="bold cyan")
     table.add_column("Command", style="bold")
     table.add_column("Description")
-    table.add_row("/help", "Show this help message")
-    table.add_row("/clear", "Wipe the current session's history")
-    table.add_row("/model [name]", "Show current model or switch to a new one")
-    table.add_row("/provider <name>", "Switch provider: gemini or openai")
-    table.add_row("/sessions", "List all saved sessions")
-    table.add_row("/session <name>", "Switch to a named session (creates if new)")
-    table.add_row("/delete [name]", "Delete a session (default: current)")
-    table.add_row("/config", "Show current config")
-    table.add_row("/config set <key> <value>", "Save a config value persistently")
-    table.add_row("/compact", "Summarize and compress the current session history")
+    for cmd in SLASH_COMMANDS:
+        table.add_row(cmd["command"], cmd["description"])
     console.print(table)
     console.print()
 

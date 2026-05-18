@@ -8,13 +8,18 @@ import sys
 import asyncio
 import base64
 import uuid
+import logging
 from dotenv import load_dotenv
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # Load environment variables from .env file before anything else
 load_dotenv()
 
 from pi.ai.providers import get_chat
-from pi.chat import _build_system_prompt, TOOLS, EXECUTORS
+from pi.chat import _build_system_prompt, TOOLS, EXECUTORS, SLASH_COMMANDS
 from pi import session as session_manager
 from pi.ai.base import ToolResult
 
@@ -75,10 +80,12 @@ def get_config():
 @app.websocket("/ws/chat")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
+    logger.info("WebSocket client connected.")
     
     try:
         # Wait for the initial configuration/message from the client
         init_data = await websocket.receive_text()
+        logger.debug(f"Received initial data: {init_data}")
         req = json.loads(init_data)
         
         session_id = req.get("session_id", "default")
@@ -104,7 +111,15 @@ async def websocket_endpoint(websocket: WebSocket):
                 # If we don't have a user message yet (e.g. after the first loop), wait for one
                 if not user_message:
                     data = await websocket.receive_text()
+                    logger.debug(f"Received data: {data}")
                     req = json.loads(data)
+                    if req.get("type") == "get_commands":
+                        await websocket.send_json({
+                            "type": "commands_list",
+                            "commands": SLASH_COMMANDS
+                        })
+                        continue
+                    
                     user_message = req.get("message", "")
                     images_b64 = req.get("images", [])
                     image_paths = save_base64_images(session_id, images_b64)
@@ -116,6 +131,111 @@ async def websocket_endpoint(websocket: WebSocket):
                     if not history:
                         history = session_manager.load(session_file)
                         chat = get_chat(provider, system_prompt, TOOLS, history, model=model)
+
+                # Handle slash commands
+                if user_message and user_message.startswith("/"):
+                    parts = user_message.split(maxsplit=2)
+                    cmd = parts[0].lower()
+                    arg = parts[1].strip() if len(parts) > 1 else ""
+                    logger.info(f"Processing slash command: {cmd} with arg: '{arg}'")
+                    
+                    if cmd == "/clear":
+                        if os.path.exists(session_file):
+                            os.remove(session_file)
+                        history = []
+                        chat = get_chat(provider, system_prompt, TOOLS, history, model=model)
+                        await websocket.send_json({"type": "text", "content": "*(Session cleared)*"})
+                        await websocket.send_json({"type": "done"})
+                        user_message = ""
+                        image_paths = []
+                        continue
+                    
+                    elif cmd == "/model":
+                        if arg:
+                            model = arg
+                            chat = get_chat(provider, system_prompt, TOOLS, history, model=model)
+                            await websocket.send_json({"type": "text", "content": f"*(Model switched to {model})*"})
+                        else:
+                            await websocket.send_json({"type": "text", "content": f"*(Current model: {model})*"})
+                        await websocket.send_json({"type": "done"})
+                        user_message = ""
+                        image_paths = []
+                        continue
+
+                    elif cmd == "/provider":
+                        if arg in ["gemini", "openai"]:
+                            provider = arg
+                            chat = get_chat(provider, system_prompt, TOOLS, history, model=model)
+                            await websocket.send_json({"type": "text", "content": f"*(Provider switched to {provider})*"})
+                        else:
+                            await websocket.send_json({"type": "text", "content": "*(Unknown provider)*"})
+                        await websocket.send_json({"type": "done"})
+                        user_message = ""
+                        image_paths = []
+                        continue
+                    
+                    elif cmd == "/session":
+                        if arg:
+                            session_id = arg
+                            session_file = os.path.join(sessions_dir, f"{session_id}.jsonl")
+                            history = session_manager.load(session_file)
+                            chat = get_chat(provider, system_prompt, TOOLS, history, model=model)
+                            await websocket.send_json({"type": "text", "content": f"*(Switched to session: {session_id})*"})
+                        else:
+                            await websocket.send_json({"type": "text", "content": f"*(Current session: {session_id})*"})
+                        await websocket.send_json({"type": "done"})
+                        user_message = ""
+                        image_paths = []
+                        continue
+                        
+                    elif cmd == "/sessions":
+                        import glob
+                        files = glob.glob(os.path.join(sessions_dir, "*.jsonl"))
+                        if not files:
+                            await websocket.send_json({"type": "text", "content": "*(No saved sessions found)*"})
+                        else:
+                            sess_names = [os.path.splitext(os.path.basename(f))[0] for f in files]
+                            await websocket.send_json({"type": "text", "content": f"*(Saved sessions: {', '.join(sess_names)})*"})
+                        await websocket.send_json({"type": "done"})
+                        user_message = ""
+                        image_paths = []
+                        continue
+                        
+                    elif cmd == "/delete":
+                        target = arg or session_id
+                        target_file = os.path.join(sessions_dir, f"{target}.jsonl")
+                        if os.path.exists(target_file):
+                            os.remove(target_file)
+                            await websocket.send_json({"type": "text", "content": f"*(Deleted session: {target})*"})
+                            if target == session_id:
+                                session_id = "default"
+                                session_file = os.path.join(sessions_dir, f"{session_id}.jsonl")
+                                history = []
+                                chat = get_chat(provider, system_prompt, TOOLS, history, model=model)
+                        else:
+                            await websocket.send_json({"type": "text", "content": f"*(Session not found: {target})*"})
+                        await websocket.send_json({"type": "done"})
+                        user_message = ""
+                        image_paths = []
+                        continue
+                        
+                    elif cmd == "/compact":
+                        from pi.chat import COMPACT_PROMPT
+                        await websocket.send_json({"type": "text", "content": "*(Compacting session...)*\n"})
+                        summary, _ = chat.send(COMPACT_PROMPT)
+                        if summary:
+                            if os.path.exists(session_file):
+                                os.remove(session_file)
+                            session_manager.append(session_file, "assistant", f"[Compacted context]\n{summary}")
+                            history = session_manager.load(session_file)
+                            chat = get_chat(provider, system_prompt, TOOLS, history, model=model)
+                            await websocket.send_json({"type": "text", "content": "*(Session compacted successfully)*"})
+                        else:
+                            await websocket.send_json({"type": "text", "content": "*(Compaction failed)*"})
+                        await websocket.send_json({"type": "done"})
+                        user_message = ""
+                        image_paths = []
+                        continue
 
                 # Save user message and prepare LLM input
                 if image_paths:
@@ -130,6 +250,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     session_manager.append(session_file, "user", user_message)
                     llm_input = user_message
                 
+                logger.info(f"Sending to LLM: {llm_input}")
                 tool_calls = []
                 text_buffer = ""
                 
@@ -140,6 +261,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         await websocket.send_json({"type": "text", "content": chunk})
                     elif isinstance(chunk, list):
                         tool_calls = chunk
+                        logger.info(f"LLM responded with tool calls: {[tc.name for tc in tool_calls]}")
                         
                 # Save assistant initial response
                 if tool_calls:
@@ -159,6 +281,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             "name": tc.name, 
                             "args": tc.args
                         })
+                        logger.info(f"Executing tool: {tc.name} with args: {tc.args}")
                         
                         # SPECIAL CASE: Interactive tools like ask_user
                         if tc.name == "ask_user":
@@ -181,6 +304,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         # Save and append result
                         session_manager.append_tool_result(session_file, tc.id, tc.name, output)
                         results.append(ToolResult(name=tc.name, output=output, id=tc.id))
+                        logger.info(f"Tool {tc.name} finished. Output length: {len(output)}")
                         
                         # Truncate output for the UI log
                         display_out = output[:500] + ("..." if len(output) > 500 else "")
@@ -212,12 +336,13 @@ async def websocket_endpoint(websocket: WebSocket):
                 image_paths = []
                 
             except WebSocketDisconnect:
-                print("Client disconnected normally during loop")
+                logger.info("Client disconnected normally during loop")
                 break
             
     except WebSocketDisconnect:
-        print("Client disconnected")
+        logger.info("Client disconnected.")
     except Exception as e:
+        logger.error(f"An unexpected error occurred: {e}", exc_info=True)
         try:
             await websocket.send_json({"type": "error", "message": str(e)})
             await websocket.close()

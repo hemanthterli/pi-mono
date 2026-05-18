@@ -18,6 +18,26 @@ export class PiSidebarProvider implements vscode.WebviewViewProvider {
 
         webviewView.webview.onDidReceiveMessage(async (data) => {
             switch (data.type) {
+                case "send_to_pi": {
+                    // This is a placeholder for a new pattern where webview asks host to send to python
+                    break;
+                }
+                case "get_commands": {
+                    // Webview is asking for commands, so we ask the backend
+                    this._view?.webview.postMessage({ type: 'ask_backend_for_commands' });
+                    break;
+                }
+                case "show_command_picker": {
+                    const commands = data.commands;
+                    const result = await vscode.window.showQuickPick(
+                        commands.map(c => ({ label: c.command, description: c.description })),
+                        { placeHolder: "Select a command to run" }
+                    );
+                    if (result) {
+                        this._view?.webview.postMessage({ type: 'command_selected', command: result.label });
+                    }
+                    break;
+                }
                 case "onInfo": {
                     if (!data.value) { return; }
                     vscode.window.showInformationMessage(data.value);
@@ -105,7 +125,52 @@ export class PiSidebarProvider implements vscode.WebviewViewProvider {
                     overflow-x: auto;
                     color: var(--vscode-editor-foreground);
                 }
+                #command-suggestions {
+                    display: none;
+                    position: absolute;
+                    bottom: 100%;
+                    left: 10px;
+                    right: 10px;
+                    background: var(--vscode-editorWidget-background, #252526);
+                    border: 1px solid var(--vscode-widget-border, #303031);
+                    border-radius: 6px;
+                    max-height: 250px;
+                    overflow-y: auto;
+                    box-shadow: 0 -4px 10px rgba(0,0,0,0.3);
+                    z-index: 1000;
+                    margin-bottom: 2px;
+                }
+                .suggestion-item {
+                    padding: 8px 12px;
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                    border-bottom: 1px solid var(--vscode-dropdown-border, #3c3c3c);
+                }
+                .suggestion-item:last-child {
+                    border-bottom: none;
+                }
+                .suggestion-item.selected {
+                    background: var(--vscode-list-activeSelectionBackground, #094771);
+                    color: var(--vscode-list-activeSelectionForeground, #ffffff);
+                }
+                .suggestion-item-info {
+                    display: flex;
+                    flex-direction: column;
+                }
+                .cmd-name {
+                    font-weight: bold;
+                }
+                .cmd-desc {
+                    font-size: 0.9em;
+                    color: var(--vscode-descriptionForeground, #969696);
+                }
+                .suggestion-item.selected .cmd-desc {
+                    color: var(--vscode-list-activeSelectionForeground, #ffffff);
+                }
                 .input-container {
+                    position: relative;
                     padding: 10px;
                     background: var(--vscode-editor-background);
                     border-top: 1px solid var(--vscode-panel-border);
@@ -140,9 +205,9 @@ export class PiSidebarProvider implements vscode.WebviewViewProvider {
                 #attachments-container {
                     display: flex;
                     gap: 10px;
-                    padding: 0 10px;
+                    padding: 5px 0;
                     overflow-x: auto;
-                    background: var(--vscode-editor-background);
+                    background: transparent;
                 }
                 .attachment-preview {
                     position: relative;
@@ -150,9 +215,10 @@ export class PiSidebarProvider implements vscode.WebviewViewProvider {
                     margin-bottom: 5px;
                 }
                 .attachment-preview img {
-                    height: 60px;
+                    height: 80px; /* Slightly increased thumbnail size */
                     border-radius: 4px;
                     border: 1px solid var(--vscode-panel-border);
+                    cursor: pointer;
                 }
                 .remove-attachment {
                     position: absolute;
@@ -162,16 +228,13 @@ export class PiSidebarProvider implements vscode.WebviewViewProvider {
                     color: var(--vscode-badge-foreground);
                     border: none;
                     border-radius: 50%;
-                    width: 20px;
-                    height: 20px;
-                    font-size: 12px;
+                    width: 16px; /* Decreased size */
+                    height: 16px; /* Decreased size */
+                    font-size: 10px; /* Decreased size */
                     cursor: pointer;
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                }
-                .attachment-preview img {
-                    cursor: pointer;
                 }
                 .message-image {
                     max-width: 100%;
@@ -184,7 +247,7 @@ export class PiSidebarProvider implements vscode.WebviewViewProvider {
                 #image-modal {
                     display: none;
                     position: fixed;
-                    z-index: 1000;
+                    z-index: 9999; /* Ensure modal is on top of everything */
                     left: 0;
                     top: 0;
                     width: 100%;
@@ -198,6 +261,7 @@ export class PiSidebarProvider implements vscode.WebviewViewProvider {
                     max-height: 90%;
                     border-radius: 8px;
                     box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+                    object-fit: contain; /* Ensure full image is visible */
                 }
             </style>
         </head>
@@ -206,9 +270,10 @@ export class PiSidebarProvider implements vscode.WebviewViewProvider {
                 <img id="modal-image" src="" alt="Expanded Image" />
             </div>
             <div id="chat-box"></div>
-            <div id="attachments-container"></div>
             <div class="input-container">
-                <input type="text" id="message-input" placeholder="Ask Pi something... (Paste images with Ctrl+V)" />
+                <div id="command-suggestions"></div>
+                <input type="text" id="message-input" placeholder="Ask Pi something... (Type / for commands)" />
+                <div id="attachments-container"></div>
             </div>
 
             <script>
@@ -216,6 +281,7 @@ export class PiSidebarProvider implements vscode.WebviewViewProvider {
                 const chatBox = document.getElementById('chat-box');
                 const messageInput = document.getElementById('message-input');
                 let ws = null;
+                let commands = [];
                 
                 // Track active tool UI elements
                 const activeTools = {};
@@ -230,7 +296,9 @@ export class PiSidebarProvider implements vscode.WebviewViewProvider {
                 });
 
                 function openModal(imgSrc) {
+                    // Force the src to update immediately
                     modalImage.src = imgSrc;
+                    // Reset display block/flex
                     imageModal.style.display = 'flex';
                 }
 
@@ -240,6 +308,7 @@ export class PiSidebarProvider implements vscode.WebviewViewProvider {
                     
                     ws.onopen = () => {
                         appendSystemMessage('Connected!');
+                        ws.send(JSON.stringify({ "type": "get_commands" }));
                         ws.send(JSON.stringify({
                             session_id: "vscode_session",
                             provider: "gemini",
@@ -251,7 +320,9 @@ export class PiSidebarProvider implements vscode.WebviewViewProvider {
                     ws.onmessage = (event) => {
                         const data = JSON.parse(event.data);
                         
-                        if (data.type === 'text') {
+                        if (data.type === 'commands_list') {
+                            commands = data.commands;
+                        } else if (data.type === 'text') {
                             appendPiMessage(data.content, false);
                         } else if (data.type === 'tool_start') {
                             handleToolStart(data.id, data.name, data.args);
@@ -306,12 +377,16 @@ export class PiSidebarProvider implements vscode.WebviewViewProvider {
                     
                     const img = document.createElement('img');
                     img.src = base64data;
-                    img.onclick = () => openModal(base64data);
+                    img.onclick = (e) => {
+                        e.stopPropagation();
+                        openModal(base64data);
+                    };
                     
                     const removeBtn = document.createElement('button');
                     removeBtn.className = 'remove-attachment';
                     removeBtn.textContent = 'x';
-                    removeBtn.onclick = () => {
+                    removeBtn.onclick = (e) => {
+                        e.stopPropagation();
                         const index = pendingImages.indexOf(base64data);
                         if (index > -1) {
                             pendingImages.splice(index, 1);
@@ -338,7 +413,11 @@ export class PiSidebarProvider implements vscode.WebviewViewProvider {
                         const img = document.createElement('img');
                         img.src = imgData;
                         img.className = 'message-image';
-                        img.onclick = () => openModal(imgData);
+                        // Fix: prevent event bubbling if clicked inside message box
+                        img.onclick = (e) => {
+                            e.stopPropagation();
+                            openModal(imgData);
+                        };
                         msg.appendChild(img);
                     });
 
@@ -426,8 +505,86 @@ export class PiSidebarProvider implements vscode.WebviewViewProvider {
                     scrollToBottom();
                 }
 
-                messageInput.addEventListener('keypress', (e) => {
-                    if (e.key === 'Enter' && (messageInput.value.trim() !== '' || pendingImages.length > 0)) {
+                let selectedCommandIndex = 0;
+                const suggestionsContainer = document.getElementById('command-suggestions');
+
+                function renderSuggestions(filterText) {
+                    const filtered = commands.filter(c => c.cmd.startsWith(filterText.toLowerCase()));
+                    suggestionsContainer.innerHTML = '';
+                    
+                    if (filtered.length === 0 || !filterText.startsWith('/')) {
+                        suggestionsContainer.style.display = 'none';
+                        return;
+                    }
+                    
+                    filtered.forEach((c, index) => {
+                        const div = document.createElement('div');
+                        div.className = 'suggestion-item' + (index === selectedCommandIndex ? ' selected' : '');
+                        
+                        // Future icon placeholder: <i class="codicon icon-here"></i>
+                        
+                        const infoDiv = document.createElement('div');
+                        infoDiv.className = 'suggestion-item-info';
+                        
+                        const nameSpan = document.createElement('span');
+                        nameSpan.className = 'cmd-name';
+                        nameSpan.textContent = c.cmd;
+                        
+                        const descSpan = document.createElement('span');
+                        descSpan.className = 'cmd-desc';
+                        descSpan.textContent = c.desc;
+                        
+                        infoDiv.appendChild(nameSpan);
+                        infoDiv.appendChild(descSpan);
+                        div.appendChild(infoDiv);
+
+                        div.onmousedown = (e) => { // use mousedown so it fires before blur
+                            e.preventDefault();
+                            messageInput.value = c.cmd + ' ';
+                            suggestionsContainer.style.display = 'none';
+                            messageInput.focus();
+                        };
+                        suggestionsContainer.appendChild(div);
+                    });
+                    suggestionsContainer.style.display = 'block';
+                }
+
+                messageInput.addEventListener('input', (e) => {
+                    const val = messageInput.value;
+                    if (val.startsWith('/')) {
+                        const cmdPart = val.split(' ')[0]; // only match before first space
+                        if (val.includes(' ')) {
+                            suggestionsContainer.style.display = 'none';
+                        } else {
+                            selectedCommandIndex = 0;
+                            renderSuggestions(cmdPart);
+                        }
+                    } else {
+                        suggestionsContainer.style.display = 'none';
+                    }
+                });
+
+                messageInput.addEventListener('keydown', (e) => {
+                    if (suggestionsContainer.style.display === 'block') {
+                        const items = suggestionsContainer.querySelectorAll('.suggestion-item');
+                        if (e.key === 'ArrowDown') {
+                            e.preventDefault();
+                            selectedCommandIndex = (selectedCommandIndex + 1) % items.length;
+                            renderSuggestions(messageInput.value.split(' ')[0]);
+                        } else if (e.key === 'ArrowUp') {
+                            e.preventDefault();
+                            selectedCommandIndex = (selectedCommandIndex - 1 + items.length) % items.length;
+                            renderSuggestions(messageInput.value.split(' ')[0]);
+                        } else if (e.key === 'Enter' || e.key === 'Tab') {
+                            e.preventDefault();
+                            const filtered = commands.filter(c => c.cmd.startsWith(messageInput.value.split(' ')[0].toLowerCase()));
+                            const selectedCmd = filtered[selectedCommandIndex];
+                            if (selectedCmd) {
+                                messageInput.value = selectedCmd.cmd + ' ';
+                                suggestionsContainer.style.display = 'none';
+                            }
+                        }
+                    } else if (e.key === 'Enter' && (messageInput.value.trim() !== '' || pendingImages.length > 0)) {
                         const text = messageInput.value.trim();
                         const imagesToSend = [...pendingImages];
                         
