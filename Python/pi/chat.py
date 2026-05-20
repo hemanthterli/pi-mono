@@ -91,6 +91,16 @@ def _build_system_prompt() -> str:
     )
 
 
+SLASH_COMMANDS = [
+    {"cmd": "/clear",    "desc": "Wipe current session history"},
+    {"cmd": "/compact",  "desc": "Summarize and compress session history"},
+    {"cmd": "/model",    "desc": "Switch model (e.g. /model gemini-2.5-flash)"},
+    {"cmd": "/provider", "desc": "Switch provider (e.g. /provider openai)"},
+    {"cmd": "/session",  "desc": "Switch to named session (e.g. /session work)"},
+    {"cmd": "/sessions", "desc": "List all saved sessions"},
+    {"cmd": "/delete",   "desc": "Delete a session (e.g. /delete work)"},
+]
+
 TOOLS = [
     bash_tool.DEFINITION,
     read_tool.DEFINITION,

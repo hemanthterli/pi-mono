@@ -48,7 +48,6 @@ const vscode = __importStar(__webpack_require__(/*! vscode */ "vscode"));
 class PiSidebarProvider {
     _extensionUri;
     _view;
-    _doc;
     constructor(_extensionUri) {
         this._extensionUri = _extensionUri;
     }
@@ -60,450 +59,627 @@ class PiSidebarProvider {
         };
         webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
         webviewView.webview.onDidReceiveMessage(async (data) => {
-            switch (data.type) {
-                case "onInfo": {
-                    if (!data.value) {
-                        return;
-                    }
-                    vscode.window.showInformationMessage(data.value);
-                    break;
+            if (data.type === 'show_command_picker') {
+                const cmds = data.commands ?? [];
+                if (!cmds.length) {
+                    return;
                 }
-                case "onError": {
-                    if (!data.value) {
-                        return;
-                    }
-                    vscode.window.showErrorMessage(data.value);
-                    break;
+                const picked = await vscode.window.showQuickPick(cmds.map(c => ({ label: c.cmd, description: c.desc })), { placeHolder: 'Run a Pi command…' });
+                if (picked) {
+                    this._view?.webview.postMessage({ type: 'command_selected', command: picked.label });
                 }
             }
         });
     }
-    _getHtmlForWebview(webview) {
-        return `<!DOCTYPE html>
-        <html lang="en">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; connect-src ws://localhost:8001;">
-            <title>Pi Assistant</title>
-            <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-            <style>
-                body {
-                    font-family: var(--vscode-font-family);
-                    color: var(--vscode-editor-foreground);
-                    background-color: var(--vscode-editor-background);
-                    padding: 0;
-                    margin: 0;
-                    display: flex;
-                    flex-direction: column;
-                    height: 100vh;
-                }
-                #chat-box {
-                    flex: 1;
-                    overflow-y: auto;
-                    padding: 15px;
-                    display: flex;
-                    flex-direction: column;
-                    gap: 10px;
-                }
-                .message {
-                    max-width: 85%;
-                    padding: 8px 12px;
-                    border-radius: 8px;
-                    word-wrap: break-word;
-                    line-height: 1.4;
-                }
-                .message-user {
-                    align-self: flex-end;
-                    background-color: var(--vscode-button-background);
-                    color: var(--vscode-button-foreground);
-                }
-                .message-pi {
-                    align-self: flex-start;
-                    background-color: var(--vscode-editorWidget-background);
-                    border: 1px solid var(--vscode-editorWidget-border);
-                }
-                .message-system {
-                    align-self: center;
-                    font-size: 0.85em;
-                    color: var(--vscode-descriptionForeground);
-                    background: transparent;
-                    padding: 2px 8px;
-                }
-                .tool-details {
-                    margin-top: 5px;
-                    background: var(--vscode-editor-background);
-                    border: 1px solid var(--vscode-panel-border);
-                    border-radius: 4px;
-                    padding: 5px;
-                    font-family: var(--vscode-editor-font-family);
-                    font-size: 0.9em;
-                }
-                .tool-details summary {
-                    cursor: pointer;
-                    color: var(--vscode-textLink-foreground);
-                    font-weight: bold;
-                    user-select: none;
-                }
-                .tool-details pre {
-                    margin: 5px 0 0 0;
-                    white-space: pre-wrap;
-                    overflow-x: auto;
-                    color: var(--vscode-editor-foreground);
-                }
-                .input-container {
-                    padding: 10px;
-                    background: var(--vscode-editor-background);
-                    border-top: 1px solid var(--vscode-panel-border);
-                }
-                #message-input {
-                    width: 100%;
-                    box-sizing: border-box;
-                    padding: 10px;
-                    background: var(--vscode-input-background);
-                    color: var(--vscode-input-foreground);
-                    border: 1px solid var(--vscode-input-border);
-                    border-radius: 4px;
-                }
-                
-                /* Markdown specific styles */
-                .message-pi p { margin: 0 0 8px 0; }
-                .message-pi p:last-child { margin: 0; }
-                .message-pi pre { 
-                    background: var(--vscode-textCodeBlock-background); 
-                    padding: 8px; 
-                    border-radius: 4px;
-                    overflow-x: auto;
-                }
-                .message-pi code {
-                    background: var(--vscode-textCodeBlock-background);
-                    padding: 2px 4px;
-                    border-radius: 3px;
-                    font-family: var(--vscode-editor-font-family);
-                }
-                
-                /* Image specific styles */
-                #attachments-container {
-                    display: flex;
-                    gap: 10px;
-                    padding: 0 10px;
-                    overflow-x: auto;
-                    background: var(--vscode-editor-background);
-                }
-                .attachment-preview {
-                    position: relative;
-                    display: inline-block;
-                    margin-bottom: 5px;
-                }
-                .attachment-preview img {
-                    height: 60px;
-                    border-radius: 4px;
-                    border: 1px solid var(--vscode-panel-border);
-                }
-                .remove-attachment {
-                    position: absolute;
-                    top: -5px;
-                    right: -5px;
-                    background: var(--vscode-badge-background);
-                    color: var(--vscode-badge-foreground);
-                    border: none;
-                    border-radius: 50%;
-                    width: 20px;
-                    height: 20px;
-                    font-size: 12px;
-                    cursor: pointer;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                }
-                .attachment-preview img {
-                    cursor: pointer;
-                }
-                .message-image {
-                    max-width: 100%;
-                    border-radius: 4px;
-                    margin-top: 5px;
-                    cursor: pointer;
-                }
+    _getHtmlForWebview(_webview) {
+        return /* html */ `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; connect-src ws://localhost:8001;">
+<title>Pi</title>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
 
-                /* Image Modal (Pop-up) */
-                #image-modal {
-                    display: none;
-                    position: fixed;
-                    z-index: 1000;
-                    left: 0;
-                    top: 0;
-                    width: 100%;
-                    height: 100%;
-                    background-color: rgba(0,0,0,0.8);
-                    justify-content: center;
-                    align-items: center;
-                }
-                #image-modal img {
-                    max-width: 90%;
-                    max-height: 90%;
-                    border-radius: 8px;
-                    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-                }
-            </style>
-        </head>
-        <body>
-            <div id="image-modal">
-                <img id="modal-image" src="" alt="Expanded Image" />
-            </div>
-            <div id="chat-box"></div>
-            <div id="attachments-container"></div>
-            <div class="input-container">
-                <input type="text" id="message-input" placeholder="Ask Pi something... (Paste images with Ctrl+V)" />
-            </div>
+body {
+    font-family: var(--vscode-font-family);
+    font-size: 13px;
+    color: var(--vscode-editor-foreground);
+    background: var(--vscode-editor-background);
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+}
 
-            <script>
-                const vscode = acquireVsCodeApi();
-                const chatBox = document.getElementById('chat-box');
-                const messageInput = document.getElementById('message-input');
-                let ws = null;
-                
-                // Track active tool UI elements
-                const activeTools = {};
+/* ── Status bar ── */
+#status-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    min-height: 24px;
+    flex-shrink: 0;
+}
+#status-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #777;
+    flex-shrink: 0;
+    transition: background 0.3s;
+}
+#status-dot.connected { background: #4ec94e; }
+#status-dot.error     { background: #e05252; }
 
-                // Modal logic
-                const imageModal = document.getElementById('image-modal');
-                const modalImage = document.getElementById('modal-image');
-                
-                imageModal.addEventListener('click', () => {
-                    imageModal.style.display = 'none';
-                    modalImage.src = '';
-                });
+/* ── Chat area ── */
+#chat-box {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px 10px 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
 
-                function openModal(imgSrc) {
-                    modalImage.src = imgSrc;
-                    imageModal.style.display = 'flex';
-                }
+/* ── Message rows ── */
+.msg-row { display: flex; flex-direction: column; }
+.msg-row.user { align-items: flex-end; }
+.msg-row.pi   { align-items: flex-start; }
 
-                function connectWebSocket() {
-                    appendSystemMessage('Connecting to Pi backend...');
-                    ws = new WebSocket('ws://localhost:8001/ws/chat');
-                    
-                    ws.onopen = () => {
-                        appendSystemMessage('Connected!');
-                        ws.send(JSON.stringify({
-                            session_id: "vscode_session",
-                            provider: "gemini",
-                            model: "gemini-2.5-pro",
-                            message: ""
-                        }));
-                    };
-                    
-                    ws.onmessage = (event) => {
-                        const data = JSON.parse(event.data);
-                        
-                        if (data.type === 'text') {
-                            appendPiMessage(data.content, false);
-                        } else if (data.type === 'tool_start') {
-                            handleToolStart(data.id, data.name, data.args);
-                        } else if (data.type === 'tool_end') {
-                            handleToolEnd(data.id, data.result);
-                        } else if (data.type === 'ask_user') {
-                            appendPiMessage('<strong>Question:</strong> ' + data.question, true);
-                            window.awaitingAnswer = true;
-                        } else if (data.type === 'done') {
-                            // Turn finished
-                        } else if (data.type === 'error') {
-                            appendSystemMessage('Error: ' + data.message);
-                        }
-                        
-                        scrollToBottom();
-                    };
+.bubble {
+    max-width: 88%;
+    padding: 9px 13px;
+    border-radius: 14px;
+    line-height: 1.55;
+    word-break: break-word;
+    font-size: 13px;
+}
+.bubble.user {
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border-bottom-right-radius: 4px;
+}
+.bubble.pi {
+    background: var(--vscode-editorWidget-background);
+    border: 1px solid var(--vscode-panel-border);
+    border-bottom-left-radius: 4px;
+}
 
-                    ws.onclose = () => {
-                        appendSystemMessage('Disconnected from backend.');
-                        ws = null;
-                    };
-                }
+/* Markdown inside Pi bubble */
+.bubble.pi p { margin: 0 0 6px; }
+.bubble.pi p:last-child { margin: 0; }
+.bubble.pi pre {
+    background: var(--vscode-textCodeBlock-background);
+    padding: 8px 10px;
+    border-radius: 5px;
+    overflow-x: auto;
+    margin: 6px 0;
+    font-size: 11.5px;
+    font-family: var(--vscode-editor-font-family);
+}
+.bubble.pi code {
+    background: var(--vscode-textCodeBlock-background);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 11.5px;
+    font-family: var(--vscode-editor-font-family);
+}
+.bubble.pi ul, .bubble.pi ol { padding-left: 18px; margin: 4px 0; }
+.bubble.pi h1, .bubble.pi h2, .bubble.pi h3 { margin: 8px 0 4px; font-size: 1em; }
+.bubble.pi table { border-collapse: collapse; margin: 6px 0; font-size: 12px; }
+.bubble.pi th, .bubble.pi td { border: 1px solid var(--vscode-panel-border); padding: 4px 8px; }
 
-                function scrollToBottom() {
-                    chatBox.scrollTop = chatBox.scrollHeight;
-                }
+/* Typing dots */
+.pi-dots {
+    display: inline-flex;
+    gap: 4px;
+    padding: 10px 14px;
+    background: var(--vscode-editorWidget-background);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 14px;
+    border-bottom-left-radius: 4px;
+    align-self: flex-start;
+}
+.pi-dots span {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--vscode-descriptionForeground);
+    animation: dotbounce 1.3s infinite;
+}
+.pi-dots span:nth-child(2) { animation-delay: 0.18s; }
+.pi-dots span:nth-child(3) { animation-delay: 0.36s; }
+@keyframes dotbounce {
+    0%, 80%, 100% { transform: scale(0.55); opacity: 0.35; }
+    40%            { transform: scale(1);    opacity: 1;    }
+}
 
-                let pendingImages = [];
-                const attachmentsContainer = document.getElementById('attachments-container');
+/* ── Working block (Codex-style collapsible) ── */
+.working-block {
+    align-self: flex-start;
+    max-width: 96%;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 10px;
+    overflow: hidden;
+    font-size: 12px;
+}
+.working-header {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 11px;
+    background: var(--vscode-editorGroupHeader-tabsBackground);
+    cursor: pointer;
+    user-select: none;
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+}
+.working-header:hover { background: var(--vscode-list-hoverBackground); }
+.w-spin {
+    display: inline-block;
+    animation: wspin 0.9s linear infinite;
+    font-size: 13px;
+}
+@keyframes wspin { to { transform: rotate(360deg); } }
+.w-elapsed { flex: 1; }
+.w-chevron { font-size: 10px; transition: transform 0.15s; }
+.w-chevron.open { transform: rotate(180deg); }
 
-                // Handle pasting images
-                window.addEventListener('paste', (e) => {
-                    const items = e.clipboardData.items;
-                    for (let i = 0; i < items.length; i++) {
-                        if (items[i].type.indexOf('image') !== -1) {
-                            const blob = items[i].getAsFile();
-                            const reader = new FileReader();
-                            reader.onload = (event) => {
-                                const base64data = event.target.result;
-                                addImageToPending(base64data);
-                            };
-                            reader.readAsDataURL(blob);
-                        }
-                    }
-                });
+.working-steps {
+    display: none;
+    flex-direction: column;
+    background: var(--vscode-editor-background);
+}
+.working-steps.open { display: flex; }
 
-                function addImageToPending(base64data) {
-                    pendingImages.push(base64data);
-                    
-                    const previewDiv = document.createElement('div');
-                    previewDiv.className = 'attachment-preview';
-                    
-                    const img = document.createElement('img');
-                    img.src = base64data;
-                    img.onclick = () => openModal(base64data);
-                    
-                    const removeBtn = document.createElement('button');
-                    removeBtn.className = 'remove-attachment';
-                    removeBtn.textContent = 'x';
-                    removeBtn.onclick = () => {
-                        const index = pendingImages.indexOf(base64data);
-                        if (index > -1) {
-                            pendingImages.splice(index, 1);
-                        }
-                        previewDiv.remove();
-                    };
-                    
-                    previewDiv.appendChild(img);
-                    previewDiv.appendChild(removeBtn);
-                    attachmentsContainer.appendChild(previewDiv);
-                }
+.step-item {
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+    padding: 5px 12px;
+    border-top: 1px solid var(--vscode-panel-border);
+    font-size: 11.5px;
+    color: var(--vscode-editor-foreground);
+}
+.step-icon {
+    flex-shrink: 0;
+    width: 14px;
+    text-align: center;
+    font-size: 12px;
+}
+.step-icon.running { animation: wspin 0.9s linear infinite; }
+.step-name {
+    font-weight: 600;
+    color: var(--vscode-textLink-foreground);
+    margin-right: 3px;
+}
+.step-label {
+    color: var(--vscode-descriptionForeground);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 280px;
+}
 
-                function appendUserMessage(text, images = []) {
-                    const msg = document.createElement('div');
-                    msg.className = 'message message-user';
-                    
-                    if (text) {
-                        const textNode = document.createElement('div');
-                        textNode.textContent = text;
-                        msg.appendChild(textNode);
-                    }
+/* ── Images ── */
+.msg-image {
+    max-width: 100%;
+    max-height: 220px;
+    border-radius: 7px;
+    margin-top: 6px;
+    display: block;
+    cursor: pointer;
+}
+.img-thumb {
+    height: 60px;
+    border-radius: 5px;
+    border: 1px solid var(--vscode-panel-border);
+    cursor: pointer;
+}
+.attachment-wrap { position: relative; display: inline-block; }
+.attachment-remove {
+    position: absolute; top: -5px; right: -5px;
+    width: 15px; height: 15px;
+    border-radius: 50%;
+    background: var(--vscode-badge-background);
+    color: var(--vscode-badge-foreground);
+    border: none; cursor: pointer;
+    font-size: 9px;
+    display: flex; align-items: center; justify-content: center;
+    line-height: 1;
+}
 
-                    images.forEach(imgData => {
-                        const img = document.createElement('img');
-                        img.src = imgData;
-                        img.className = 'message-image';
-                        img.onclick = () => openModal(imgData);
-                        msg.appendChild(img);
-                    });
+/* Image modal */
+#img-modal {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.82);
+    z-index: 9999;
+    justify-content: center; align-items: center;
+}
+#img-modal.open { display: flex; }
+#img-modal img { max-width: 92%; max-height: 92%; border-radius: 8px; object-fit: contain; }
 
-                    chatBox.appendChild(msg);
-                    scrollToBottom();
-                }
+/* ── Input area ── */
+.input-area {
+    border-top: 1px solid var(--vscode-panel-border);
+    padding: 8px;
+    position: relative;
+    flex-shrink: 0;
+}
+#attachments-bar {
+    display: flex; flex-wrap: wrap; gap: 6px; padding: 0 0 6px;
+}
+#msg-input {
+    width: 100%;
+    padding: 8px 11px;
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-input-border, transparent);
+    border-radius: 7px;
+    font-family: inherit;
+    font-size: 13px;
+    outline: none;
+    resize: none;
+    min-height: 36px;
+    max-height: 130px;
+    overflow-y: auto;
+    line-height: 1.4;
+}
+#msg-input:focus { border-color: var(--vscode-focusBorder); }
+#msg-input::placeholder { color: var(--vscode-input-placeholderForeground); }
 
-                // We keep track of the last Pi message div so we can stream text into it
-                let currentPiMessageDiv = null;
-                let currentPiTextBuffer = "";
+/* Toast */
+#toast {
+    position: absolute;
+    bottom: calc(100% + 5px);
+    left: 8px; right: 8px;
+    background: var(--vscode-editorWidget-background);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 12px;
+    color: var(--vscode-editor-foreground);
+    text-align: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+    z-index: 200;
+}
+#toast.visible { opacity: 1; }
+</style>
+</head>
+<body>
 
-                function appendPiMessage(chunk, isHtml = false) {
-                    if (!currentPiMessageDiv) {
-                        currentPiMessageDiv = document.createElement('div');
-                        currentPiMessageDiv.className = 'message message-pi';
-                        chatBox.appendChild(currentPiMessageDiv);
-                    }
-                    
-                    if (isHtml) {
-                        currentPiMessageDiv.innerHTML += chunk;
-                    } else {
-                        currentPiTextBuffer += chunk;
-                        // Use marked to parse the accumulated text
-                        if (window.marked) {
-                            currentPiMessageDiv.innerHTML = marked.parse(currentPiTextBuffer);
-                        } else {
-                            currentPiMessageDiv.textContent = currentPiTextBuffer;
-                        }
-                    }
-                    scrollToBottom();
-                }
-                
-                // When Pi starts using tools, we close the current text bubble
-                function breakPiMessage() {
-                    currentPiMessageDiv = null;
-                    currentPiTextBuffer = "";
-                }
+<div id="status-bar">
+    <div id="status-dot"></div>
+    <span id="status-text">Connecting…</span>
+</div>
 
-                function appendSystemMessage(text) {
-                    breakPiMessage();
-                    const msg = document.createElement('div');
-                    msg.className = 'message message-system';
-                    msg.textContent = text;
-                    chatBox.appendChild(msg);
-                    scrollToBottom();
-                }
+<div id="chat-box"></div>
 
-                function handleToolStart(id, name, args) {
-                    breakPiMessage();
-                    const container = document.createElement('div');
-                    container.className = 'message message-pi';
-                    
-                    const details = document.createElement('details');
-                    details.className = 'tool-details';
-                    // Open by default while running
-                    details.open = true; 
-                    
-                    const summary = document.createElement('summary');
-                    summary.innerHTML = \`⚙️ Executing <strong>\${name}</strong>\`;
-                    
-                    const argsPre = document.createElement('pre');
-                    argsPre.textContent = "Args: " + JSON.stringify(args, null, 2);
-                    argsPre.style.color = "var(--vscode-descriptionForeground)";
-                    
-                    const resultPre = document.createElement('pre');
-                    resultPre.className = 'tool-result';
-                    resultPre.innerHTML = '<em>Running...</em>';
-                    
-                    details.appendChild(summary);
-                    details.appendChild(argsPre);
-                    details.appendChild(resultPre);
-                    container.appendChild(details);
-                    
-                    chatBox.appendChild(container);
-                    activeTools[id] = resultPre;
-                    scrollToBottom();
-                }
+<div id="img-modal">
+    <img id="modal-img" src="" alt="">
+</div>
 
-                function handleToolEnd(id, result) {
-                    if (activeTools[id]) {
-                        activeTools[id].textContent = "Output:\\n" + result;
-                        activeTools[id].parentElement.open = false; 
-                        delete activeTools[id];
-                    }
-                    scrollToBottom();
-                }
+<div class="input-area">
+    <div id="attachments-bar"></div>
+    <textarea id="msg-input" rows="1" placeholder="Ask Pi… (type / for commands)"></textarea>
+    <div id="toast"></div>
+</div>
 
-                messageInput.addEventListener('keypress', (e) => {
-                    if (e.key === 'Enter' && (messageInput.value.trim() !== '' || pendingImages.length > 0)) {
-                        const text = messageInput.value.trim();
-                        const imagesToSend = [...pendingImages];
-                        
-                        appendUserMessage(text, imagesToSend);
-                        messageInput.value = '';
-                        
-                        // Clear pending images UI
-                        pendingImages = [];
-                        attachmentsContainer.innerHTML = '';
-                        
-                        breakPiMessage(); // Break Pi bubble so new response gets a new bubble
+<script>
+const vscode = acquireVsCodeApi();
+const chatBox    = document.getElementById('chat-box');
+const msgInput   = document.getElementById('msg-input');
+const attBar     = document.getElementById('attachments-bar');
+const statusDot  = document.getElementById('status-dot');
+const statusText = document.getElementById('status-text');
+const imgModal   = document.getElementById('img-modal');
+const modalImg   = document.getElementById('modal-img');
+const toastEl    = document.getElementById('toast');
 
-                        if (ws && ws.readyState === WebSocket.OPEN) {
-                            if (window.awaitingAnswer) {
-                                ws.send(JSON.stringify({ answer: text, message: text, images: imagesToSend }));
-                                window.awaitingAnswer = false;
-                            } else {
-                                ws.send(JSON.stringify({ message: text, images: imagesToSend }));
-                            }
-                        } else if (!ws || ws.readyState === WebSocket.CLOSED) {
-                            connectWebSocket();
-                            // In a real app we'd queue the message. Here we'll just force a reconnect.
-                        }
-                    }
-                });
+let ws             = null;
+let cachedCommands = [];
+let pendingImages  = [];
 
-                connectWebSocket();
-            </script>
-        </body>
-        </html>`;
+// ── Toast ────────────────────────────────────────────────────────────
+let toastTimer = null;
+function showToast(msg) {
+    if (toastTimer) clearTimeout(toastTimer);
+    toastEl.textContent = msg;
+    toastEl.classList.add('visible');
+    toastTimer = setTimeout(() => toastEl.classList.remove('visible'), 3500);
+}
+
+// ── Status bar ────────────────────────────────────────────────────────
+function setStatus(cls, txt) {
+    statusDot.className = cls;
+    statusText.textContent = txt;
+}
+
+// ── Image modal ───────────────────────────────────────────────────────
+imgModal.addEventListener('click', () => imgModal.classList.remove('open'));
+function openModal(src) { modalImg.src = src; imgModal.classList.add('open'); }
+
+// ── Textarea auto-grow ────────────────────────────────────────────────
+msgInput.addEventListener('input', () => {
+    msgInput.style.height = 'auto';
+    msgInput.style.height = Math.min(msgInput.scrollHeight, 130) + 'px';
+});
+
+// ── Message helpers ───────────────────────────────────────────────────
+function appendUserMessage(text, images = []) {
+    const row = document.createElement('div');
+    row.className = 'msg-row user';
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble user';
+    if (text) {
+        const d = document.createElement('div');
+        d.textContent = text;
+        bubble.appendChild(d);
+    }
+    images.forEach(src => {
+        const img = document.createElement('img');
+        img.src = src; img.className = 'msg-image';
+        img.onclick = e => { e.stopPropagation(); openModal(src); };
+        bubble.appendChild(img);
+    });
+    row.appendChild(bubble);
+    chatBox.appendChild(row);
+    scrollBottom();
+}
+
+let piRow = null, piBubble = null, piBuffer = '';
+function ensurePiBubble() {
+    if (!piBubble) {
+        piRow = document.createElement('div');
+        piRow.className = 'msg-row pi';
+        piBubble = document.createElement('div');
+        piBubble.className = 'bubble pi';
+        piRow.appendChild(piBubble);
+        chatBox.appendChild(piRow);
+    }
+}
+function appendPiText(chunk) {
+    removeDotsSpinner();
+    ensurePiBubble();
+    piBuffer += chunk;
+    piBubble.innerHTML = (window.marked?.parse ?? (s => s))(piBuffer);
+    scrollBottom();
+}
+function breakPiBubble() { piRow = piBubble = null; piBuffer = ''; }
+
+// ── Typing dots ───────────────────────────────────────────────────────
+let dotsEl = null;
+function showDotsSpinner() {
+    if (dotsEl) return;
+    dotsEl = document.createElement('div');
+    dotsEl.className = 'pi-dots';
+    dotsEl.innerHTML = '<span></span><span></span><span></span>';
+    chatBox.appendChild(dotsEl);
+    scrollBottom();
+}
+function removeDotsSpinner() {
+    if (dotsEl) { dotsEl.remove(); dotsEl = null; }
+}
+
+// ── Working block (Codex-style) ───────────────────────────────────────
+let wBlock = null, wSteps = null, wStart = null, wOpen = false;
+const stepEls = {};
+
+function ensureWorkingBlock() {
+    if (wBlock) return;
+    breakPiBubble();
+    removeDotsSpinner();
+    wStart = Date.now();
+    wOpen = false;
+
+    wBlock = document.createElement('div');
+    wBlock.className = 'working-block';
+
+    const hdr = document.createElement('div');
+    hdr.className = 'working-header';
+    hdr.innerHTML =
+        '<span class="w-spin">↻</span>' +
+        '<span class="w-elapsed">Working…</span>' +
+        '<span class="w-chevron">▾</span>';
+    hdr.addEventListener('click', () => {
+        wOpen = !wOpen;
+        wSteps.classList.toggle('open', wOpen);
+        hdr.querySelector('.w-chevron').classList.toggle('open', wOpen);
+    });
+
+    wSteps = document.createElement('div');
+    wSteps.className = 'working-steps';
+
+    wBlock.appendChild(hdr);
+    wBlock.appendChild(wSteps);
+    chatBox.appendChild(wBlock);
+}
+
+function handleToolStart(id, name, args) {
+    ensureWorkingBlock();
+    const label = args.command || args.path || args.pattern || args.question || name;
+    const item = document.createElement('div');
+    item.className = 'step-item';
+    item.innerHTML =
+        \`<span class="step-icon running" id="si-\${id}">↻</span>\` +
+        \`<span><span class="step-name">\${name}</span>\` +
+        \`<span class="step-label">\${String(label).substring(0, 60)}</span></span>\`;
+    wSteps.appendChild(item);
+    stepEls[id] = item;
+    scrollBottom();
+}
+
+function handleToolEnd(id) {
+    const item = stepEls[id];
+    if (!item) return;
+    const icon = document.getElementById('si-' + id);
+    if (icon) { icon.textContent = '✓'; icon.classList.remove('running'); icon.style.color = '#4ec94e'; }
+    delete stepEls[id];
+    scrollBottom();
+}
+
+function finalizeWorkingBlock() {
+    if (!wBlock || !wStart) return;
+    const secs = ((Date.now() - wStart) / 1000).toFixed(1);
+    const hdr = wBlock.querySelector('.working-header');
+    if (hdr) {
+        const spin = hdr.querySelector('.w-spin');
+        if (spin) { spin.textContent = '✓'; spin.classList.remove('w-spin'); spin.style.color = '#4ec94e'; }
+        const el = hdr.querySelector('.w-elapsed');
+        if (el) el.textContent = 'Worked for ' + secs + 's';
+    }
+    wBlock = wSteps = wStart = null;
+    breakPiBubble();
+}
+
+// ── WebSocket ─────────────────────────────────────────────────────────
+function connect() {
+    setStatus('', 'Connecting…');
+    ws = new WebSocket('ws://localhost:8001/ws/chat');
+
+    ws.onopen = () => {
+        setStatus('connected', 'Pi · gemini-2.5-flash');
+        ws.send(JSON.stringify({
+            session_id: 'vscode_session',
+            provider: 'gemini',
+            model: 'gemini-2.5-flash',
+            message: ''
+        }));
+        ws.send(JSON.stringify({ type: 'get_commands' }));
+        showDotsSpinner();
+    };
+
+    ws.onmessage = ev => {
+        const d = JSON.parse(ev.data);
+        switch (d.type) {
+            case 'text':
+                removeDotsSpinner();
+                appendPiText(d.content);
+                break;
+            case 'tool_start':
+                handleToolStart(d.id, d.name, d.args ?? {});
+                break;
+            case 'tool_end':
+                handleToolEnd(d.id);
+                break;
+            case 'ask_user':
+                removeDotsSpinner();
+                breakPiBubble();
+                appendPiText('**' + d.question + '**');
+                window.awaitingAnswer = true;
+                break;
+            case 'system_notification':
+                showToast(d.message);
+                break;
+            case 'commands_list':
+                cachedCommands = d.commands ?? [];
+                break;
+            case 'done':
+                finalizeWorkingBlock();
+                removeDotsSpinner();
+                break;
+            case 'error':
+                removeDotsSpinner();
+                setStatus('error', 'Error');
+                showToast('⚠ ' + d.message);
+                break;
+        }
+        scrollBottom();
+    };
+
+    ws.onclose = () => {
+        setStatus('error', 'Disconnected — retrying in 3s…');
+        ws = null;
+        wBlock = wSteps = wStart = null;
+        setTimeout(connect, 3000);
+    };
+}
+
+// ── Send message ──────────────────────────────────────────────────────
+function sendMessage() {
+    const text   = msgInput.value.trim();
+    const images = [...pendingImages];
+    if (!text && images.length === 0) return;
+    if (!ws || ws.readyState !== WebSocket.OPEN) { showToast('Not connected'); return; }
+
+    if (!text.startsWith('/')) {
+        appendUserMessage(text, images);
+    }
+
+    msgInput.value = '';
+    msgInput.style.height = 'auto';
+    pendingImages = [];
+    attBar.innerHTML = '';
+    breakPiBubble();
+    showDotsSpinner();
+
+    const payload = window.awaitingAnswer
+        ? { answer: text, message: text, images }
+        : { message: text, images };
+    if (window.awaitingAnswer) window.awaitingAnswer = false;
+    ws.send(JSON.stringify(payload));
+}
+
+// ── Input events ──────────────────────────────────────────────────────
+msgInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+});
+
+msgInput.addEventListener('input', () => {
+    if (msgInput.value === '/') {
+        if (cachedCommands.length) {
+            vscode.postMessage({ type: 'show_command_picker', commands: cachedCommands });
+            msgInput.value = '';
+        }
+    }
+});
+
+// Command picker result from VS Code
+window.addEventListener('message', ev => {
+    if (ev.data?.type === 'command_selected') {
+        msgInput.value = ev.data.command + ' ';
+        msgInput.focus();
+    }
+});
+
+// ── Image paste ───────────────────────────────────────────────────────
+window.addEventListener('paste', e => {
+    for (const item of e.clipboardData.items) {
+        if (item.type.startsWith('image/')) {
+            const reader = new FileReader();
+            reader.onload = ev => addPendingImage(ev.target.result);
+            reader.readAsDataURL(item.getAsFile());
+        }
+    }
+});
+
+function addPendingImage(src) {
+    pendingImages.push(src);
+    const wrap = document.createElement('div');
+    wrap.className = 'attachment-wrap';
+    const img = document.createElement('img');
+    img.src = src; img.className = 'img-thumb';
+    img.onclick = e => { e.stopPropagation(); openModal(src); };
+    const btn = document.createElement('button');
+    btn.className = 'attachment-remove'; btn.textContent = '×';
+    btn.onclick = () => { pendingImages = pendingImages.filter(x => x !== src); wrap.remove(); };
+    wrap.appendChild(img); wrap.appendChild(btn);
+    attBar.appendChild(wrap);
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────
+function scrollBottom() { chatBox.scrollTop = chatBox.scrollHeight; }
+
+connect();
+</script>
+</body>
+</html>`;
     }
 }
 exports.PiSidebarProvider = PiSidebarProvider;
