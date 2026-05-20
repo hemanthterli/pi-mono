@@ -260,6 +260,52 @@ body {
 #img-modal.open { display: flex; }
 #img-modal img { max-width: 92%; max-height: 92%; border-radius: 8px; object-fit: contain; }
 
+/* ── Command dropdown ── */
+#cmd-dropdown {
+    display: none;
+    position: absolute;
+    bottom: calc(100% + 4px);
+    left: 0; right: 0;
+    background: var(--vscode-dropdown-background);
+    border: 1px solid var(--vscode-dropdown-border);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 -6px 16px rgba(0,0,0,0.35);
+    z-index: 150;
+    max-height: 240px;
+    overflow-y: auto;
+}
+#cmd-dropdown.open { display: block; }
+.cmd-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--vscode-panel-border);
+}
+.cmd-item:last-child { border-bottom: none; }
+.cmd-item:hover, .cmd-item.active { background: var(--vscode-list-hoverBackground); }
+.cmd-item-name {
+    font-weight: 600;
+    color: var(--vscode-textLink-foreground);
+    min-width: 88px;
+    font-size: 12.5px;
+}
+.cmd-item-desc {
+    font-size: 11.5px;
+    color: var(--vscode-descriptionForeground);
+}
+
+/* ── System note (slash command response in chat) ── */
+.system-note {
+    align-self: center;
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    padding: 1px 6px;
+    text-align: center;
+}
+
 /* ── Input area ── */
 .input-area {
     border-top: 1px solid var(--vscode-panel-border);
@@ -324,6 +370,7 @@ body {
 
 <div class="input-area">
     <div id="attachments-bar"></div>
+    <div id="cmd-dropdown"></div>
     <textarea id="msg-input" rows="1" placeholder="Ask Pi… (type / for commands)"></textarea>
     <div id="toast"></div>
 </div>
@@ -339,9 +386,8 @@ const imgModal   = document.getElementById('img-modal');
 const modalImg   = document.getElementById('modal-img');
 const toastEl    = document.getElementById('toast');
 
-let ws             = null;
-let cachedCommands = [];
-let pendingImages  = [];
+let ws            = null;
+let pendingImages = [];
 
 // ── Toast ────────────────────────────────────────────────────────────
 let toastTimer = null;
@@ -362,11 +408,6 @@ function setStatus(cls, txt) {
 imgModal.addEventListener('click', () => imgModal.classList.remove('open'));
 function openModal(src) { modalImg.src = src; imgModal.classList.add('open'); }
 
-// ── Textarea auto-grow ────────────────────────────────────────────────
-msgInput.addEventListener('input', () => {
-    msgInput.style.height = 'auto';
-    msgInput.style.height = Math.min(msgInput.scrollHeight, 130) + 'px';
-});
 
 // ── Message helpers ───────────────────────────────────────────────────
 function appendUserMessage(text, images = []) {
@@ -409,6 +450,14 @@ function appendPiText(chunk) {
     scrollBottom();
 }
 function breakPiBubble() { piRow = piBubble = null; piBuffer = ''; }
+
+function appendSystemNote(text) {
+    const el = document.createElement('div');
+    el.className = 'system-note';
+    el.textContent = text;
+    chatBox.appendChild(el);
+    scrollBottom();
+}
 
 // ── Typing dots ───────────────────────────────────────────────────────
 let dotsEl = null;
@@ -508,8 +557,6 @@ function connect() {
             model: 'gemini-2.5-flash',
             message: ''
         }));
-        ws.send(JSON.stringify({ type: 'get_commands' }));
-        showDotsSpinner();
     };
 
     ws.onmessage = ev => {
@@ -532,10 +579,7 @@ function connect() {
                 window.awaitingAnswer = true;
                 break;
             case 'system_notification':
-                console.log('Pi System Notification:', d.message);
-                break;
-            case 'commands_list':
-                cachedCommands = d.commands ?? [];
+                appendSystemNote(d.message);
                 break;
             case 'done':
                 finalizeWorkingBlock();
@@ -565,10 +609,8 @@ function sendMessage() {
     if (!text && images.length === 0) return;
     if (!ws || ws.readyState !== WebSocket.OPEN) { showToast('Not connected'); return; }
 
-    if (!text.startsWith('/')) {
-        appendUserMessage(text, images);
-    }
-
+    appendUserMessage(text, images);
+    hideCmdDropdown();
     msgInput.value = '';
     msgInput.style.height = 'auto';
     pendingImages = [];
@@ -583,25 +625,78 @@ function sendMessage() {
     ws.send(JSON.stringify(payload));
 }
 
+// ── Command dropdown (in-webview) ─────────────────────────────────────
+const COMMANDS = [
+    { cmd: '/clear',    desc: 'Wipe current session history' },
+    { cmd: '/compact',  desc: 'Summarize and compress session history' },
+    { cmd: '/model',    desc: 'Switch model  (e.g. /model gemini-2.5-flash)' },
+    { cmd: '/provider', desc: 'Switch provider  (gemini or openai)' },
+    { cmd: '/session',  desc: 'Switch to a named session' },
+    { cmd: '/sessions', desc: 'List all saved sessions' },
+    { cmd: '/delete',   desc: 'Delete a session' },
+];
+let cmdIdx = 0;
+const cmdDropdown = document.getElementById('cmd-dropdown');
+
+function renderCmdDropdown(filter) {
+    const filtered = COMMANDS.filter(c => c.cmd.startsWith(filter));
+    if (!filtered.length || !filter.startsWith('/')) { hideCmdDropdown(); return; }
+    cmdIdx = Math.min(cmdIdx, filtered.length - 1);
+    cmdDropdown.innerHTML = '';
+    filtered.forEach((c, i) => {
+        const item = document.createElement('div');
+        item.className = 'cmd-item' + (i === cmdIdx ? ' active' : '');
+        item.innerHTML = \`<span class="cmd-item-name">\${c.cmd}</span><span class="cmd-item-desc">\${c.desc}</span>\`;
+        item.onmousedown = e => {
+            e.preventDefault();
+            msgInput.value = c.cmd + ' ';
+            hideCmdDropdown();
+            msgInput.focus();
+        };
+        cmdDropdown.appendChild(item);
+    });
+    cmdDropdown.classList.add('open');
+}
+function hideCmdDropdown() { cmdDropdown.classList.remove('open'); cmdIdx = 0; }
+
 // ── Input events ──────────────────────────────────────────────────────
 msgInput.addEventListener('keydown', e => {
+    if (cmdDropdown.classList.contains('open')) {
+        const filtered = COMMANDS.filter(c => c.cmd.startsWith(msgInput.value.split(' ')[0]));
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            cmdIdx = (cmdIdx + 1) % filtered.length;
+            renderCmdDropdown(msgInput.value.split(' ')[0]);
+            return;
+        }
+        if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            cmdIdx = (cmdIdx - 1 + filtered.length) % filtered.length;
+            renderCmdDropdown(msgInput.value.split(' ')[0]);
+            return;
+        }
+        if (e.key === 'Tab' || e.key === 'Enter') {
+            if (filtered[cmdIdx]) {
+                e.preventDefault();
+                msgInput.value = filtered[cmdIdx].cmd + ' ';
+                hideCmdDropdown();
+                return;
+            }
+        }
+        if (e.key === 'Escape') { hideCmdDropdown(); return; }
+    }
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
 });
 
 msgInput.addEventListener('input', () => {
-    if (msgInput.value === '/') {
-        if (cachedCommands.length) {
-            vscode.postMessage({ type: 'show_command_picker', commands: cachedCommands });
-            msgInput.value = '';
-        }
-    }
-});
-
-// Command picker result from VS Code
-window.addEventListener('message', ev => {
-    if (ev.data?.type === 'command_selected') {
-        msgInput.value = ev.data.command + ' ';
-        msgInput.focus();
+    msgInput.style.height = 'auto';
+    msgInput.style.height = Math.min(msgInput.scrollHeight, 130) + 'px';
+    const val = msgInput.value;
+    if (val.startsWith('/') && !val.includes(' ')) {
+        cmdIdx = 0;
+        renderCmdDropdown(val);
+    } else {
+        hideCmdDropdown();
     }
 });
 
