@@ -21,6 +21,7 @@ load_dotenv()
 from pi.ai.providers import get_chat
 from pi.chat import _build_system_prompt, TOOLS, EXECUTORS, SLASH_COMMANDS
 from pi import session as session_manager
+from pi import config as _config
 from pi.ai.base import ToolResult
 
 def save_base64_images(session_id: str, images_b64: list) -> list:
@@ -163,12 +164,14 @@ async def websocket_endpoint(websocket: WebSocket):
                         continue
 
                     elif cmd == "/provider":
-                        if arg in ["gemini", "openai"]:
-                            provider = arg
+                        if arg.lower() in ["gemini", "openai"]:
+                            provider = arg.lower()
                             chat = get_chat(provider, system_prompt, TOOLS, history, model=model)
                             await websocket.send_json({"type": "text", "content": f"*(Provider switched to {provider})*"})
+                        elif not arg:
+                            await websocket.send_json({"type": "text", "content": f"*(Current provider: {provider}. Use /provider gemini or /provider openai)*"})
                         else:
-                            await websocket.send_json({"type": "text", "content": "*(Unknown provider)*"})
+                            await websocket.send_json({"type": "text", "content": f"*(Unknown provider: {arg!r}. Use gemini or openai)*"})
                         await websocket.send_json({"type": "done"})
                         user_message = ""
                         image_paths = []
@@ -232,6 +235,52 @@ async def websocket_endpoint(websocket: WebSocket):
                             await websocket.send_json({"type": "text", "content": "*(Session compacted successfully)*"})
                         else:
                             await websocket.send_json({"type": "text", "content": "*(Compaction failed)*"})
+                        await websocket.send_json({"type": "done"})
+                        user_message = ""
+                        image_paths = []
+                        continue
+
+                    elif cmd == "/help":
+                        lines = ["**Available commands:**\n"]
+
+                        for sc in SLASH_COMMANDS:
+                            # Support both possible key names: "cmd" or "command"
+                            command = sc.get("cmd") or sc.get("command")
+                            description = sc.get("desc") or sc.get("description", "")
+
+                            if command:
+                                lines.append(f"`{command}` — {description}")
+
+                        await websocket.send_json({
+                            "type": "text",
+                            "content": "\n".join(lines)
+                        })
+                        await websocket.send_json({"type": "done"})
+
+                        user_message = ""
+                        image_paths = []
+                        continue
+
+
+                    elif cmd == "/config":
+                        if arg == "set":
+                            rest = parts[2] if len(parts) > 2 else ""
+                            kv = rest.split(maxsplit=1)
+                            if len(kv) == 2:
+                                ok, msg = _config.set_value(kv[0], kv[1])
+                                await websocket.send_json({"type": "text", "content": f"*({msg})*"})
+                            else:
+                                await websocket.send_json({"type": "text", "content": "*(Usage: /config set \<key\> \<value\>)*"})
+                        else:
+                            cfg = _config.load()
+                            lines = ["**Current config:**\n"]
+                            for k, v in cfg.items():
+                                if isinstance(v, dict):
+                                    for kk, vv in v.items():
+                                        lines.append(f"`{k}.{kk}` = `{vv}`")
+                                else:
+                                    lines.append(f"`{k}` = `{v}`")
+                            await websocket.send_json({"type": "text", "content": "\n".join(lines)})
                         await websocket.send_json({"type": "done"})
                         user_message = ""
                         image_paths = []

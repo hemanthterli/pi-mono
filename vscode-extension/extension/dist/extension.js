@@ -262,7 +262,26 @@ body {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 280px;
+    max-width: 220px;
+}
+.step-time {
+    font-size: 10.5px;
+    color: var(--vscode-descriptionForeground);
+    margin-left: auto;
+    flex-shrink: 0;
+    opacity: 0.7;
+}
+.step-output {
+    padding: 3px 12px 5px 33px;
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    font-family: var(--vscode-editor-font-family);
+    white-space: pre-wrap;
+    word-break: break-all;
+    border-top: 1px solid var(--vscode-panel-border);
+    max-height: 80px;
+    overflow-y: auto;
+    opacity: 0.75;
 }
 
 /* ── Images ── */
@@ -519,6 +538,7 @@ function removeDotsSpinner() {
 // ── Working block (Codex-style) ───────────────────────────────────────
 let wBlock = null, wSteps = null, wStart = null, wOpen = false;
 const stepEls = {};
+const stepTimes = {};
 
 function ensureWorkingBlock() {
     if (wBlock) return;
@@ -553,23 +573,37 @@ function ensureWorkingBlock() {
 function handleToolStart(id, name, args) {
     ensureWorkingBlock();
     const label = args.command || args.path || args.pattern || args.question || name;
+    stepTimes[id] = Date.now();
     const item = document.createElement('div');
     item.className = 'step-item';
     item.innerHTML =
         \`<span class="step-icon running" id="si-\${id}">↻</span>\` +
         \`<span><span class="step-name">\${name}</span>\` +
-        \`<span class="step-label">\${String(label).substring(0, 60)}</span></span>\`;
+        \`<span class="step-label">\${String(label).substring(0, 60)}</span></span>\` +
+        \`<span class="step-time" id="st-\${id}"></span>\`;
     wSteps.appendChild(item);
     stepEls[id] = item;
     scrollBottom();
 }
 
-function handleToolEnd(id) {
+function handleToolEnd(id, result) {
     const item = stepEls[id];
     if (!item) return;
     const icon = document.getElementById('si-' + id);
     if (icon) { icon.textContent = '✓'; icon.classList.remove('running'); icon.style.color = '#4ec94e'; }
+    const timeEl = document.getElementById('st-' + id);
+    if (timeEl && stepTimes[id]) {
+        const ms = Date.now() - stepTimes[id];
+        timeEl.textContent = ms < 1000 ? ms + 'ms' : (ms / 1000).toFixed(1) + 's';
+    }
+    if (result) {
+        const out = document.createElement('div');
+        out.className = 'step-output';
+        out.textContent = result.length > 300 ? result.substring(0, 300) + '…' : result;
+        item.insertAdjacentElement('afterend', out);
+    }
     delete stepEls[id];
+    delete stepTimes[id];
     scrollBottom();
 }
 
@@ -613,7 +647,7 @@ function connect() {
                 handleToolStart(d.id, d.name, d.args ?? {});
                 break;
             case 'tool_end':
-                handleToolEnd(d.id);
+                handleToolEnd(d.id, d.result ?? '');
                 break;
             case 'ask_user':
                 removeDotsSpinner();
@@ -670,13 +704,16 @@ function sendMessage() {
 
 // ── Command dropdown (in-webview) ─────────────────────────────────────
 const COMMANDS = [
-    { cmd: '/clear',    desc: 'Wipe current session history' },
-    { cmd: '/compact',  desc: 'Summarize and compress session history' },
-    { cmd: '/model',    desc: 'Switch model  (e.g. /model gemini-2.5-flash)' },
-    { cmd: '/provider', desc: 'Switch provider  (gemini or openai)' },
-    { cmd: '/session',  desc: 'Switch to a named session' },
-    { cmd: '/sessions', desc: 'List all saved sessions' },
-    { cmd: '/delete',   desc: 'Delete a session' },
+    { cmd: '/clear',      desc: 'Wipe current session history' },
+    { cmd: '/compact',    desc: 'Summarize and compress session history' },
+    { cmd: '/config',     desc: 'Show current config' },
+    { cmd: '/config set', desc: 'Set a config value  (e.g. /config set provider gemini)' },
+    { cmd: '/delete',     desc: 'Delete a session' },
+    { cmd: '/help',       desc: 'Show all available commands' },
+    { cmd: '/model',      desc: 'Switch model  (e.g. /model gemini-2.5-flash)' },
+    { cmd: '/provider',   desc: 'Switch provider  (gemini or openai)' },
+    { cmd: '/session',    desc: 'Switch to a named session' },
+    { cmd: '/sessions',   desc: 'List all saved sessions' },
 ];
 let cmdIdx = 0;
 const cmdDropdown = document.getElementById('cmd-dropdown');

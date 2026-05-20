@@ -92,13 +92,16 @@ def _build_system_prompt() -> str:
 
 
 SLASH_COMMANDS = [
-    {"cmd": "/clear",    "desc": "Wipe current session history"},
-    {"cmd": "/compact",  "desc": "Summarize and compress session history"},
-    {"cmd": "/model",    "desc": "Switch model (e.g. /model gemini-2.5-flash)"},
-    {"cmd": "/provider", "desc": "Switch provider (e.g. /provider openai)"},
-    {"cmd": "/session",  "desc": "Switch to named session (e.g. /session work)"},
-    {"cmd": "/sessions", "desc": "List all saved sessions"},
-    {"cmd": "/delete",   "desc": "Delete a session (e.g. /delete work)"},
+    {"cmd": "/help",       "desc": "Show all available commands"},
+    {"cmd": "/clear",      "desc": "Wipe current session history"},
+    {"cmd": "/compact",    "desc": "Summarize and compress session history"},
+    {"cmd": "/model",      "desc": "Show or switch model  (e.g. /model gemini-2.5-flash)"},
+    {"cmd": "/provider",   "desc": "Switch provider: gemini or openai"},
+    {"cmd": "/session",    "desc": "Switch to a named session  (e.g. /session work)"},
+    {"cmd": "/sessions",   "desc": "List all saved sessions"},
+    {"cmd": "/delete",     "desc": "Delete a session  (e.g. /delete work)"},
+    {"cmd": "/config",     "desc": "Show current config"},
+    {"cmd": "/config set", "desc": "Set a config value  (e.g. /config set provider gemini)"},
 ]
 
 TOOLS = [
