@@ -27,7 +27,12 @@ module.exports = {
       }
     ]
   },
+  target: 'node',
   externals: {
-    vscode: 'commonjs vscode'
+    vscode: 'commonjs vscode',
+    fs: 'commonjs fs',
+    path: 'commonjs path',
+    child_process: 'commonjs child_process',
+    util: 'commonjs util',
   }
 };

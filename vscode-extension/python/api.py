@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 from pi.ai.providers import get_chat
-from pi.chat import _build_system_prompt, TOOLS, EXECUTORS, SLASH_COMMANDS
+from pi.chat import _build_system_prompt, TOOLS, SLASH_COMMANDS
 from pi import session as session_manager
 from pi import config as _config
 from pi.ai.base import ToolResult
@@ -321,56 +321,31 @@ async def websocket_endpoint(websocket: WebSocket):
                 else:
                     session_manager.append(session_file, "assistant", text_buffer)
 
-                # 2. Agent Loop (Execute tools, handle interactive asks, send results to LLM)
+                # 2. Agent Loop — tool execution delegated to VS Code client
                 while tool_calls:
                     results = []
                     for tc in tool_calls:
+                        logger.info(f"Dispatching tool to client: {tc.name} args={tc.args}")
                         await websocket.send_json({
-                            "type": "tool_start", 
-                            "id": tc.id, 
-                            "name": tc.name, 
-                            "args": tc.args
-                        })
-                        logger.info(f"Executing tool: {tc.name} with args: {tc.args}")
-                        
-                        # SPECIAL CASE: Interactive tools like ask_user
-                        if tc.name == "ask_user":
-                            # Send question to UI
-                            await websocket.send_json({
-                                "type": "ask_user",
-                                "question": tc.args.get("question", "Require user input:")
-                            })
-                            # Pause and WAIT for user reply over the same socket
-                            reply_data = await websocket.receive_text()
-                            reply_json = json.loads(reply_data)
-                            output = reply_json.get("answer", reply_json.get("message", "User declined to answer."))
-                        else:
-                            # Normal tools (bash, read, edit)
-                            try:
-                                output = EXECUTORS[tc.name](**tc.args)
-                            except Exception as e:
-                                output = f"Error executing tool: {str(e)}"
-                        
-                        # Save and append result
-                        session_manager.append_tool_result(session_file, tc.id, tc.name, output)
-                        results.append(ToolResult(name=tc.name, output=output, id=tc.id))
-                        logger.info(f"Tool {tc.name} finished. Output length: {len(output)}")
-                        
-                        # Truncate output for the UI log
-                        display_out = output[:500] + ("..." if len(output) > 500 else "")
-                        await websocket.send_json({
-                            "type": "tool_end",
+                            "type": "tool_call",
                             "id": tc.id,
                             "name": tc.name,
-                            "result": display_out
+                            "args": tc.args
                         })
-                        
+                        # Block until VS Code executes the tool and sends back the result
+                        reply_data = await websocket.receive_text()
+                        reply_json = json.loads(reply_data)
+                        output = reply_json.get("result", "")
+                        logger.info(f"Tool {tc.name} result received. Length: {len(output)}")
+
+                        session_manager.append_tool_result(session_file, tc.id, tc.name, output)
+                        results.append(ToolResult(name=tc.name, output=output, id=tc.id))
+
                     # Send results back to LLM for the next step
                     new_text, tool_calls = chat.send(results)
-                    
+
                     if new_text:
                         await websocket.send_json({"type": "text", "content": "\n" + new_text})
-                    # Save assistant response   
                     if tool_calls:
                         session_manager.append_assistant(session_file, new_text or None, [
                             {"id": tc.id, "name": tc.name, "args": tc.args} for tc in tool_calls

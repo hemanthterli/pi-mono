@@ -1,4 +1,135 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as nodePath from 'path';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
+
+async function executeTool(name: string, args: Record<string, any>, cwd: string): Promise<string> {
+    switch (name) {
+        case 'bash': {
+            const { command } = args;
+            try {
+                const { stdout, stderr } = await execAsync(command, { cwd, timeout: 30000 });
+                let out = stdout;
+                if (stderr) { out += (out ? '\n' : '') + stderr; }
+                return out || '(no output)';
+            } catch (e: any) {
+                let out = e.stdout || '';
+                if (e.stderr) { out += (out ? '\n' : '') + e.stderr; }
+                return out || e.message;
+            }
+        }
+
+        case 'read': {
+            const { path: filePath, offset = 0, limit = 2000 } = args;
+            const resolved = nodePath.isAbsolute(filePath) ? filePath : nodePath.join(cwd, filePath);
+            const content = fs.readFileSync(resolved, 'utf-8');
+            const lines = content.split('\n');
+            const slice = lines.slice(offset, offset + limit);
+            return slice.map((line: string, i: number) => `${offset + i + 1}\t${line}`).join('\n');
+        }
+
+        case 'write': {
+            const { path: filePath, content } = args;
+            const resolved = nodePath.isAbsolute(filePath) ? filePath : nodePath.join(cwd, filePath);
+            fs.mkdirSync(nodePath.dirname(resolved), { recursive: true });
+            fs.writeFileSync(resolved, content, 'utf-8');
+            return `Written: ${resolved}`;
+        }
+
+        case 'edit': {
+            const { path: filePath, old_string, new_string, replace_all = false } = args;
+            const resolved = nodePath.isAbsolute(filePath) ? filePath : nodePath.join(cwd, filePath);
+            let content = fs.readFileSync(resolved, 'utf-8');
+            if (!content.includes(old_string)) { return `Error: string not found in ${resolved}`; }
+            content = replace_all ? content.split(old_string).join(new_string) : content.replace(old_string, new_string);
+            fs.writeFileSync(resolved, content, 'utf-8');
+            return `Edited: ${resolved}`;
+        }
+
+        case 'grep': {
+            const { pattern, path: searchPath, recursive = true, case_sensitive = true } = args;
+            const resolved = nodePath.isAbsolute(searchPath) ? searchPath : nodePath.join(cwd, searchPath);
+            let regex: RegExp;
+            try { regex = new RegExp(pattern, case_sensitive ? 'g' : 'gi'); }
+            catch { return `Error: invalid regex pattern: ${pattern}`; }
+            const results: string[] = [];
+            const searchFile = (fp: string) => {
+                try {
+                    fs.readFileSync(fp, 'utf-8').split('\n').forEach((line: string, i: number) => {
+                        if (regex.test(line)) { results.push(`${fp}:${i + 1}:${line.trim()}`); }
+                    });
+                } catch {}
+            };
+            const searchDir = (dir: string) => {
+                try {
+                    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+                        if (entry.name.startsWith('.') || ['node_modules', '__pycache__', '.git'].includes(entry.name)) { continue; }
+                        const full = nodePath.join(dir, entry.name);
+                        if (entry.isDirectory() && recursive) { searchDir(full); }
+                        else if (entry.isFile()) { searchFile(full); }
+                    }
+                } catch {}
+            };
+            try { fs.statSync(resolved).isDirectory() ? searchDir(resolved) : searchFile(resolved); }
+            catch (e: any) { return `Error: ${e.message}`; }
+            return results.length ? results.slice(0, 500).join('\n') : 'No matches found';
+        }
+
+        case 'ls': {
+            const { path: dirPath, recursive = false } = args;
+            const resolved = nodePath.isAbsolute(dirPath) ? dirPath : nodePath.join(cwd, dirPath);
+            const results: string[] = [];
+            const listDir = (dir: string, depth: number) => {
+                try {
+                    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+                        if (entry.name.startsWith('.') || ['node_modules', '__pycache__', '.git'].includes(entry.name)) { continue; }
+                        results.push(`${'  '.repeat(depth)}${entry.isDirectory() ? '[dir] ' : '      '}${entry.name}`);
+                        if (entry.isDirectory() && recursive) { listDir(nodePath.join(dir, entry.name), depth + 1); }
+                    }
+                } catch {}
+            };
+            listDir(resolved, 0);
+            return results.length ? results.join('\n') : '(empty)';
+        }
+
+        case 'find': {
+            const { path: searchPath, pattern, recursive = true } = args;
+            const resolved = nodePath.isAbsolute(searchPath) ? searchPath : nodePath.join(cwd, searchPath);
+            const rx = new RegExp('^' + pattern.replace(/\./g, '\\.').replace(/\*/g, '.*').replace(/\?/g, '.') + '$');
+            const results: string[] = [];
+            const walk = (dir: string) => {
+                try {
+                    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+                        if (entry.name.startsWith('.') || ['node_modules', '__pycache__', '.git'].includes(entry.name)) { continue; }
+                        const full = nodePath.join(dir, entry.name);
+                        if (entry.isDirectory() && recursive) { walk(full); }
+                        else if (entry.isFile() && rx.test(entry.name)) { results.push(full); }
+                    }
+                } catch {}
+            };
+            walk(resolved);
+            results.sort();
+            return results.length
+                ? results.slice(0, 200).join('\n') + (results.length > 200 ? `\n... (${results.length - 200} more)` : '')
+                : `No files matching '${pattern}' found`;
+        }
+
+        case 'ask_user': {
+            const answer = await vscode.window.showInputBox({
+                prompt: args.question,
+                placeHolder: 'Your answer…',
+                ignoreFocusOut: true,
+            });
+            return answer ?? 'User cancelled';
+        }
+
+        default:
+            return `Error: unknown tool '${name}'`;
+    }
+}
 
 export class PiSidebarProvider implements vscode.WebviewViewProvider {
     _view?: vscode.WebviewView;
@@ -15,15 +146,13 @@ export class PiSidebarProvider implements vscode.WebviewViewProvider {
         webviewView.webview.html = this._getHtmlForWebview(webviewView.webview, cwd);
 
         webviewView.webview.onDidReceiveMessage(async (data) => {
-            if (data.type === 'show_command_picker') {
-                const cmds: Array<{ cmd: string; desc: string }> = data.commands ?? [];
-                if (!cmds.length) { return; }
-                const picked = await vscode.window.showQuickPick(
-                    cmds.map(c => ({ label: c.cmd, description: c.desc })),
-                    { placeHolder: 'Run a Pi command…' }
-                );
-                if (picked) {
-                    this._view?.webview.postMessage({ type: 'command_selected', command: picked.label });
+            if (data.type === 'execute_tool') {
+                const { id, name, args, cwd: toolCwd } = data;
+                try {
+                    const result = await executeTool(name, args, toolCwd || cwd);
+                    webviewView.webview.postMessage({ type: 'tool_done', id, result });
+                } catch (e: any) {
+                    webviewView.webview.postMessage({ type: 'tool_done', id, result: `Error: ${e.message}` });
                 }
             }
         });
@@ -603,17 +732,9 @@ function connect() {
                 removeDotsSpinner();
                 appendPiText(d.content);
                 break;
-            case 'tool_start':
+            case 'tool_call':
                 handleToolStart(d.id, d.name, d.args ?? {});
-                break;
-            case 'tool_end':
-                handleToolEnd(d.id, d.result ?? '');
-                break;
-            case 'ask_user':
-                removeDotsSpinner();
-                breakPiBubble();
-                appendPiText('**' + d.question + '**');
-                window.awaitingAnswer = true;
+                vscode.postMessage({ type: 'execute_tool', id: d.id, name: d.name, args: d.args ?? {}, cwd: WORKSPACE_CWD });
                 break;
             case 'system_notification':
                 appendSystemNote(d.message);
@@ -655,11 +776,7 @@ function sendMessage() {
     breakPiBubble();
     showDotsSpinner();
 
-    const payload = window.awaitingAnswer
-        ? { answer: text, message: text, images }
-        : { message: text, images };
-    if (window.awaitingAnswer) window.awaitingAnswer = false;
-    ws.send(JSON.stringify(payload));
+    ws.send(JSON.stringify({ message: text, images }));
 }
 
 // ── Command dropdown (in-webview) ─────────────────────────────────────
@@ -767,6 +884,17 @@ function addPendingImage(src) {
 
 // ── Helpers ───────────────────────────────────────────────────────────
 function scrollBottom() { chatBox.scrollTop = chatBox.scrollHeight; }
+
+// ── Extension host → Webview (tool results) ───────────────────────────
+window.addEventListener('message', event => {
+    const msg = event.data;
+    if (msg.type === 'tool_done') {
+        handleToolEnd(msg.id, msg.result ?? '');
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'tool_result', id: msg.id, result: msg.result ?? '' }));
+        }
+    }
+});
 
 connect();
 </script>
