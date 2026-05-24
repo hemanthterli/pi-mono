@@ -41,9 +41,9 @@ COMPACT_PROMPT = (
 )
 
 
-def _build_system_prompt() -> str:
+def _build_system_prompt(cwd: str = "") -> str:
     """Build system prompt with live environment context injected at startup."""
-    cwd = os.getcwd()
+    cwd = cwd or os.getcwd()
     os_name = f"{platform.system()} {platform.release()}"
     py_ver = sys.version.split()[0]
 
