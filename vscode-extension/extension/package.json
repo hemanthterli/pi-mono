@@ -1,8 +1,8 @@
 {
   "name": "terli-vscode",
   "displayName": "Pi Assistant",
-  "description": "Pi AI Coding Assistant",
-  "version": "0.0.1",
+  "description": "Pi AI Coding Assistant with workspace-aware backend context. The extension now sends the current working directory from VS Code to the backend, allowing the LLM to understand the active project context and operate relative to the currently opened workspace.",
+  "version": "0.1.0",
   "publisher": "HemanthTerli",
   "engines": {
     "vscode": "^1.85.0"
