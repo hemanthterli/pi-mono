@@ -1,8 +1,9 @@
 {
-  "name": "pi-vscode",
+  "name": "terli-vscode",
   "displayName": "Pi Assistant",
   "description": "Pi AI Coding Assistant",
   "version": "0.0.1",
+  "publisher": "HemanthTerli",
   "engines": {
     "vscode": "^1.85.0"
   },
