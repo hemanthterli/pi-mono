@@ -129,9 +129,9 @@ async def websocket_endpoint(websocket: WebSocket):
                         continue
                     
                     # If this is a new message and history is empty, reload it now that we have a message
-                    if not history:
-                        history = session_manager.load(session_file)
-                        chat = get_chat(provider, system_prompt, TOOLS, history, model=model)
+                    # if not history:
+                    #     history = session_manager.load(session_file)
+                    #     chat = get_chat(provider, system_prompt, TOOLS, history, model=model)
 
                 # Handle slash commands
                 if user_message and user_message.startswith("/"):
