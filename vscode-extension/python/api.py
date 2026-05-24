@@ -94,17 +94,18 @@ async def websocket_endpoint(websocket: WebSocket):
         model = req.get("model", "gemini-2.5-pro")
         user_message = req.get("message", "")
         images_b64 = req.get("images", [])
-        
+        cwd = req.get("cwd", "")
+
         sessions_dir = os.path.expanduser("~/.pi/sessions")
         os.makedirs(sessions_dir, exist_ok=True)
         session_file = os.path.join(sessions_dir, f"{session_id}.jsonl")
-        
+
         # Save any initially provided images
         image_paths = save_base64_images(session_id, images_b64)
-        
+
         # Load history and initialize chat
         history = session_manager.load(session_file) if user_message else []
-        system_prompt = _build_system_prompt()
+        system_prompt = _build_system_prompt(cwd=cwd)
         chat = get_chat(provider, system_prompt, TOOLS, history, model=model)
         
         while True:

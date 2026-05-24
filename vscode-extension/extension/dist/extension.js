@@ -1,1 +1,937 @@
-(()=>{"use strict";var n={92(n,e,t){var o,i=this&&this.__createBinding||(Object.create?function(n,e,t,o){void 0===o&&(o=t);var i=Object.getOwnPropertyDescriptor(e,t);i&&!("get"in i?!e.__esModule:i.writable||i.configurable)||(i={enumerable:!0,get:function(){return e[t]}}),Object.defineProperty(n,o,i)}:function(n,e,t,o){void 0===o&&(o=t),n[o]=e[t]}),s=this&&this.__setModuleDefault||(Object.create?function(n,e){Object.defineProperty(n,"default",{enumerable:!0,value:e})}:function(n,e){n.default=e}),r=this&&this.__importStar||(o=function(n){return o=Object.getOwnPropertyNames||function(n){var e=[];for(var t in n)Object.prototype.hasOwnProperty.call(n,t)&&(e[e.length]=t);return e},o(n)},function(n){if(n&&n.__esModule)return n;var e={};if(null!=n)for(var t=o(n),r=0;r<t.length;r++)"default"!==t[r]&&i(e,n,t[r]);return s(e,n),e});Object.defineProperty(e,"__esModule",{value:!0}),e.PiSidebarProvider=void 0;const a=r(t(398));e.PiSidebarProvider=class{_extensionUri;_view;constructor(n){this._extensionUri=n}resolveWebviewView(n){this._view=n,n.webview.options={enableScripts:!0,localResourceRoots:[this._extensionUri]},n.webview.html=this._getHtmlForWebview(n.webview),n.webview.onDidReceiveMessage(async n=>{if("show_command_picker"===n.type){const e=n.commands??[];if(!e.length)return;const t=await a.window.showQuickPick(e.map(n=>({label:n.cmd,description:n.desc})),{placeHolder:"Run a Pi command…"});t&&this._view?.webview.postMessage({type:"command_selected",command:t.label})}})}_getHtmlForWebview(n){return"<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"UTF-8\">\n<meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0\">\n<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; connect-src ws://localhost:8001;\">\n<title>Pi</title>\n<script src=\"https://cdn.jsdelivr.net/npm/marked/marked.min.js\"><\/script>\n<style>\n* { box-sizing: border-box; margin: 0; padding: 0; }\n\nbody {\n    font-family: var(--vscode-font-family);\n    font-size: 13px;\n    color: var(--vscode-editor-foreground);\n    background: var(--vscode-editor-background);\n    display: flex;\n    flex-direction: column;\n    height: 100vh;\n    overflow: hidden;\n}\n\n/* ── Status bar ── */\n#status-bar {\n    display: flex;\n    align-items: center;\n    gap: 6px;\n    padding: 4px 10px;\n    border-bottom: 1px solid var(--vscode-panel-border);\n    font-size: 11px;\n    color: var(--vscode-descriptionForeground);\n    min-height: 24px;\n    flex-shrink: 0;\n}\n#status-dot {\n    width: 7px; height: 7px;\n    border-radius: 50%;\n    background: #777;\n    flex-shrink: 0;\n    transition: background 0.3s;\n}\n#status-dot.connected { background: #4ec94e; }\n#status-dot.error     { background: #e05252; }\n\n/* ── Chat area ── */\n#chat-box {\n    flex: 1;\n    overflow-y: auto;\n    padding: 14px 10px 6px;\n    display: flex;\n    flex-direction: column;\n    gap: 10px;\n}\n\n/* ── Message rows ── */\n.msg-row { display: flex; flex-direction: column; }\n.msg-row.user { align-items: flex-end; }\n.msg-row.pi   { align-items: flex-start; }\n\n.bubble {\n    max-width: 88%;\n    padding: 9px 13px;\n    border-radius: 14px;\n    line-height: 1.55;\n    word-break: break-word;\n    font-size: 13px;\n}\n.bubble.user {\n    background: var(--vscode-button-background);\n    color: var(--vscode-button-foreground);\n    border-bottom-right-radius: 4px;\n}\n.bubble.pi {\n    background: var(--vscode-editorWidget-background);\n    border: 1px solid var(--vscode-panel-border);\n    border-bottom-left-radius: 4px;\n}\n\n/* Markdown inside Pi bubble */\n.bubble.pi p { margin: 0 0 6px; }\n.bubble.pi p:last-child { margin: 0; }\n.bubble.pi pre {\n    background: var(--vscode-textCodeBlock-background);\n    padding: 8px 10px;\n    border-radius: 5px;\n    overflow-x: auto;\n    margin: 6px 0;\n    font-size: 11.5px;\n    font-family: var(--vscode-editor-font-family);\n}\n.bubble.pi code {\n    background: var(--vscode-textCodeBlock-background);\n    padding: 1px 5px;\n    border-radius: 3px;\n    font-size: 11.5px;\n    font-family: var(--vscode-editor-font-family);\n}\n.bubble.pi ul, .bubble.pi ol { padding-left: 18px; margin: 4px 0; }\n.bubble.pi h1, .bubble.pi h2, .bubble.pi h3 { margin: 8px 0 4px; font-size: 1em; }\n.bubble.pi table { border-collapse: collapse; margin: 6px 0; font-size: 12px; }\n.bubble.pi th, .bubble.pi td { border: 1px solid var(--vscode-panel-border); padding: 4px 8px; }\n\n/* Typing dots */\n.pi-dots {\n    display: inline-flex;\n    gap: 4px;\n    padding: 10px 14px;\n    background: var(--vscode-editorWidget-background);\n    border: 1px solid var(--vscode-panel-border);\n    border-radius: 14px;\n    border-bottom-left-radius: 4px;\n    align-self: flex-start;\n}\n.pi-dots span {\n    width: 6px; height: 6px;\n    border-radius: 50%;\n    background: var(--vscode-descriptionForeground);\n    animation: dotbounce 1.3s infinite;\n}\n.pi-dots span:nth-child(2) { animation-delay: 0.18s; }\n.pi-dots span:nth-child(3) { animation-delay: 0.36s; }\n@keyframes dotbounce {\n    0%, 80%, 100% { transform: scale(0.55); opacity: 0.35; }\n    40%            { transform: scale(1);    opacity: 1;    }\n}\n\n/* ── Working block (Codex-style collapsible) ── */\n.working-block {\n    align-self: flex-start;\n    max-width: 96%;\n    border: 1px solid var(--vscode-panel-border);\n    border-radius: 10px;\n    overflow: hidden;\n    font-size: 12px;\n}\n.working-header {\n    display: flex;\n    align-items: center;\n    gap: 7px;\n    padding: 7px 11px;\n    background: var(--vscode-editorGroupHeader-tabsBackground);\n    cursor: pointer;\n    user-select: none;\n    font-size: 12px;\n    color: var(--vscode-descriptionForeground);\n}\n.working-header:hover { background: var(--vscode-list-hoverBackground); }\n.w-spin {\n    display: inline-block;\n    animation: wspin 0.9s linear infinite;\n    font-size: 13px;\n}\n@keyframes wspin { to { transform: rotate(360deg); } }\n.w-elapsed { flex: 1; }\n.w-chevron { font-size: 10px; transition: transform 0.15s; }\n.w-chevron.open { transform: rotate(180deg); }\n\n.working-steps {\n    display: none;\n    flex-direction: column;\n    background: var(--vscode-editor-background);\n}\n.working-steps.open { display: flex; }\n\n.step-item {\n    display: flex;\n    align-items: baseline;\n    gap: 7px;\n    padding: 5px 12px;\n    border-top: 1px solid var(--vscode-panel-border);\n    font-size: 11.5px;\n    color: var(--vscode-editor-foreground);\n}\n.step-icon {\n    flex-shrink: 0;\n    width: 14px;\n    text-align: center;\n    font-size: 12px;\n}\n.step-icon.running { animation: wspin 0.9s linear infinite; }\n.step-name {\n    font-weight: 600;\n    color: var(--vscode-textLink-foreground);\n    margin-right: 3px;\n}\n.step-label {\n    color: var(--vscode-descriptionForeground);\n    white-space: nowrap;\n    overflow: hidden;\n    text-overflow: ellipsis;\n    max-width: 220px;\n}\n.step-time {\n    font-size: 10.5px;\n    color: var(--vscode-descriptionForeground);\n    margin-left: auto;\n    flex-shrink: 0;\n    opacity: 0.7;\n}\n.step-output {\n    padding: 3px 12px 5px 33px;\n    font-size: 11px;\n    color: var(--vscode-descriptionForeground);\n    font-family: var(--vscode-editor-font-family);\n    white-space: pre-wrap;\n    word-break: break-all;\n    border-top: 1px solid var(--vscode-panel-border);\n    max-height: 80px;\n    overflow-y: auto;\n    opacity: 0.75;\n}\n\n/* ── Images ── */\n.msg-image {\n    max-width: 100%;\n    max-height: 220px;\n    border-radius: 7px;\n    margin-top: 6px;\n    display: block;\n    cursor: pointer;\n}\n.img-thumb {\n    height: 60px;\n    border-radius: 5px;\n    border: 1px solid var(--vscode-panel-border);\n    cursor: pointer;\n}\n.attachment-wrap { position: relative; display: inline-block; }\n.attachment-remove {\n    position: absolute; top: -5px; right: -5px;\n    width: 15px; height: 15px;\n    border-radius: 50%;\n    background: var(--vscode-badge-background);\n    color: var(--vscode-badge-foreground);\n    border: none; cursor: pointer;\n    font-size: 9px;\n    display: flex; align-items: center; justify-content: center;\n    line-height: 1;\n}\n\n/* Image modal */\n#img-modal {\n    display: none; position: fixed; inset: 0;\n    background: rgba(0,0,0,0.82);\n    z-index: 9999;\n    justify-content: center; align-items: center;\n}\n#img-modal.open { display: flex; }\n#img-modal img { max-width: 92%; max-height: 92%; border-radius: 8px; object-fit: contain; }\n\n/* ── Command dropdown ── */\n#cmd-dropdown {\n    display: none;\n    position: absolute;\n    bottom: calc(100% + 4px);\n    left: 0; right: 0;\n    background: var(--vscode-dropdown-background);\n    border: 1px solid var(--vscode-dropdown-border);\n    border-radius: 8px;\n    overflow: hidden;\n    box-shadow: 0 -6px 16px rgba(0,0,0,0.35);\n    z-index: 150;\n    max-height: 240px;\n    overflow-y: auto;\n}\n#cmd-dropdown.open { display: block; }\n.cmd-item {\n    display: flex;\n    align-items: center;\n    gap: 12px;\n    padding: 8px 12px;\n    cursor: pointer;\n    border-bottom: 1px solid var(--vscode-panel-border);\n}\n.cmd-item:last-child { border-bottom: none; }\n.cmd-item:hover, .cmd-item.active { background: var(--vscode-list-hoverBackground); }\n.cmd-item-name {\n    font-weight: 600;\n    color: var(--vscode-textLink-foreground);\n    min-width: 88px;\n    font-size: 12.5px;\n}\n.cmd-item-desc {\n    font-size: 11.5px;\n    color: var(--vscode-descriptionForeground);\n}\n\n/* ── System note (slash command response in chat) ── */\n.system-note {\n    align-self: center;\n    font-size: 11px;\n    color: var(--vscode-descriptionForeground);\n    padding: 1px 6px;\n    text-align: center;\n}\n\n/* ── Input area ── */\n.input-area {\n    border-top: 1px solid var(--vscode-panel-border);\n    padding: 8px;\n    position: relative;\n    flex-shrink: 0;\n}\n#attachments-bar {\n    display: flex; flex-wrap: wrap; gap: 6px; padding: 0 0 6px;\n}\n#msg-input {\n    width: 100%;\n    padding: 8px 11px;\n    background: var(--vscode-input-background);\n    color: var(--vscode-input-foreground);\n    border: 1px solid var(--vscode-input-border, transparent);\n    border-radius: 7px;\n    font-family: inherit;\n    font-size: 13px;\n    outline: none;\n    resize: none;\n    min-height: 36px;\n    max-height: 130px;\n    overflow-y: auto;\n    line-height: 1.4;\n}\n#msg-input:focus { border-color: var(--vscode-focusBorder); }\n#msg-input::placeholder { color: var(--vscode-input-placeholderForeground); }\n\n/* Toast */\n#toast {\n    position: absolute;\n    bottom: calc(100% + 5px);\n    left: 8px; right: 8px;\n    background: var(--vscode-editorWidget-background);\n    border: 1px solid var(--vscode-panel-border);\n    border-radius: 6px;\n    padding: 6px 12px;\n    font-size: 12px;\n    color: var(--vscode-editor-foreground);\n    text-align: center;\n    opacity: 0;\n    pointer-events: none;\n    transition: opacity 0.2s ease;\n    z-index: 200;\n}\n#toast.visible { opacity: 1; }\n</style>\n</head>\n<body>\n\n<div id=\"status-bar\">\n    <div id=\"status-dot\"></div>\n    <span id=\"status-text\">Connecting…</span>\n</div>\n\n<div id=\"chat-box\"></div>\n\n<div id=\"img-modal\">\n    <img id=\"modal-img\" src=\"\" alt=\"\">\n</div>\n\n<div class=\"input-area\">\n    <div id=\"attachments-bar\"></div>\n    <div id=\"cmd-dropdown\"></div>\n    <textarea id=\"msg-input\" rows=\"1\" placeholder=\"Ask Pi… (type / for commands)\"></textarea>\n    <div id=\"toast\"></div>\n</div>\n\n<script>\nconst vscode = acquireVsCodeApi();\nconst chatBox    = document.getElementById('chat-box');\nconst msgInput   = document.getElementById('msg-input');\nconst attBar     = document.getElementById('attachments-bar');\nconst statusDot  = document.getElementById('status-dot');\nconst statusText = document.getElementById('status-text');\nconst imgModal   = document.getElementById('img-modal');\nconst modalImg   = document.getElementById('modal-img');\nconst toastEl    = document.getElementById('toast');\n\nlet ws            = null;\nlet pendingImages = [];\n\n// ── Toast ────────────────────────────────────────────────────────────\nlet toastTimer = null;\nfunction showToast(msg) {\n    if (toastTimer) clearTimeout(toastTimer);\n    toastEl.textContent = msg;\n    toastEl.classList.add('visible');\n    toastTimer = setTimeout(() => toastEl.classList.remove('visible'), 3500);\n}\n\n// ── Status bar ────────────────────────────────────────────────────────\nfunction setStatus(cls, txt) {\n    statusDot.className = cls;\n    statusText.textContent = txt;\n}\n\n// ── Image modal ───────────────────────────────────────────────────────\nimgModal.addEventListener('click', () => imgModal.classList.remove('open'));\nfunction openModal(src) { modalImg.src = src; imgModal.classList.add('open'); }\n\n\n// ── Message helpers ───────────────────────────────────────────────────\nfunction appendUserMessage(text, images = []) {\n    const row = document.createElement('div');\n    row.className = 'msg-row user';\n    const bubble = document.createElement('div');\n    bubble.className = 'bubble user';\n    if (text) {\n        const d = document.createElement('div');\n        d.textContent = text;\n        bubble.appendChild(d);\n    }\n    images.forEach(src => {\n        const img = document.createElement('img');\n        img.src = src; img.className = 'msg-image';\n        img.onclick = e => { e.stopPropagation(); openModal(src); };\n        bubble.appendChild(img);\n    });\n    row.appendChild(bubble);\n    chatBox.appendChild(row);\n    scrollBottom();\n}\n\nlet piRow = null, piBubble = null, piBuffer = '';\nfunction ensurePiBubble() {\n    if (!piBubble) {\n        piRow = document.createElement('div');\n        piRow.className = 'msg-row pi';\n        piBubble = document.createElement('div');\n        piBubble.className = 'bubble pi';\n        piRow.appendChild(piBubble);\n        chatBox.appendChild(piRow);\n    }\n}\nfunction appendPiText(chunk) {\n    removeDotsSpinner();\n    ensurePiBubble();\n    piBuffer += chunk;\n    piBubble.innerHTML = (window.marked?.parse ?? (s => s))(piBuffer);\n    scrollBottom();\n}\nfunction breakPiBubble() { piRow = piBubble = null; piBuffer = ''; }\n\nfunction appendSystemNote(text) {\n    const el = document.createElement('div');\n    el.className = 'system-note';\n    el.textContent = text;\n    chatBox.appendChild(el);\n    scrollBottom();\n}\n\n// ── Typing dots ───────────────────────────────────────────────────────\nlet dotsEl = null;\nfunction showDotsSpinner() {\n    if (dotsEl) return;\n    dotsEl = document.createElement('div');\n    dotsEl.className = 'pi-dots';\n    dotsEl.innerHTML = '<span></span><span></span><span></span>';\n    chatBox.appendChild(dotsEl);\n    scrollBottom();\n}\nfunction removeDotsSpinner() {\n    if (dotsEl) { dotsEl.remove(); dotsEl = null; }\n}\n\n// ── Working block (Codex-style) ───────────────────────────────────────\nlet wBlock = null, wSteps = null, wStart = null, wOpen = false;\nconst stepEls = {};\nconst stepTimes = {};\n\nfunction ensureWorkingBlock() {\n    if (wBlock) return;\n    breakPiBubble();\n    removeDotsSpinner();\n    wStart = Date.now();\n    wOpen = false;\n\n    wBlock = document.createElement('div');\n    wBlock.className = 'working-block';\n\n    const hdr = document.createElement('div');\n    hdr.className = 'working-header';\n    hdr.innerHTML =\n        '<span class=\"w-spin\">↻</span>' +\n        '<span class=\"w-elapsed\">Working…</span>' +\n        '<span class=\"w-chevron\">▾</span>';\n    hdr.addEventListener('click', () => {\n        wOpen = !wOpen;\n        wSteps.classList.toggle('open', wOpen);\n        hdr.querySelector('.w-chevron').classList.toggle('open', wOpen);\n    });\n\n    wSteps = document.createElement('div');\n    wSteps.className = 'working-steps';\n\n    wBlock.appendChild(hdr);\n    wBlock.appendChild(wSteps);\n    chatBox.appendChild(wBlock);\n}\n\nfunction handleToolStart(id, name, args) {\n    ensureWorkingBlock();\n    const label = args.command || args.path || args.pattern || args.question || name;\n    stepTimes[id] = Date.now();\n    const item = document.createElement('div');\n    item.className = 'step-item';\n    item.innerHTML =\n        `<span class=\"step-icon running\" id=\"si-${id}\">↻</span>` +\n        `<span><span class=\"step-name\">${name}</span>` +\n        `<span class=\"step-label\">${String(label).substring(0, 60)}</span></span>` +\n        `<span class=\"step-time\" id=\"st-${id}\"></span>`;\n    wSteps.appendChild(item);\n    stepEls[id] = item;\n    scrollBottom();\n}\n\nfunction handleToolEnd(id, result) {\n    const item = stepEls[id];\n    if (!item) return;\n    const icon = document.getElementById('si-' + id);\n    if (icon) { icon.textContent = '✓'; icon.classList.remove('running'); icon.style.color = '#4ec94e'; }\n    const timeEl = document.getElementById('st-' + id);\n    if (timeEl && stepTimes[id]) {\n        const ms = Date.now() - stepTimes[id];\n        timeEl.textContent = ms < 1000 ? ms + 'ms' : (ms / 1000).toFixed(1) + 's';\n    }\n    if (result) {\n        const out = document.createElement('div');\n        out.className = 'step-output';\n        out.textContent = result.length > 300 ? result.substring(0, 300) + '…' : result;\n        item.insertAdjacentElement('afterend', out);\n    }\n    delete stepEls[id];\n    delete stepTimes[id];\n    scrollBottom();\n}\n\nfunction finalizeWorkingBlock() {\n    if (!wBlock || !wStart) return;\n    const secs = ((Date.now() - wStart) / 1000).toFixed(1);\n    const hdr = wBlock.querySelector('.working-header');\n    if (hdr) {\n        const spin = hdr.querySelector('.w-spin');\n        if (spin) { spin.textContent = '✓'; spin.classList.remove('w-spin'); spin.style.color = '#4ec94e'; }\n        const el = hdr.querySelector('.w-elapsed');\n        if (el) el.textContent = 'Worked for ' + secs + 's';\n    }\n    wBlock = wSteps = wStart = null;\n    breakPiBubble();\n}\n\n// ── WebSocket ─────────────────────────────────────────────────────────\nfunction connect() {\n    setStatus('', 'Connecting…');\n    ws = new WebSocket('ws://localhost:8001/ws/chat');\n\n    ws.onopen = () => {\n        setStatus('connected', 'Pi · gemini-2.5-flash');\n        ws.send(JSON.stringify({\n            session_id: 'vscode_session',\n            provider: 'gemini',\n            model: 'gemini-2.5-flash',\n            message: ''\n        }));\n    };\n\n    ws.onmessage = ev => {\n        const d = JSON.parse(ev.data);\n        switch (d.type) {\n            case 'text':\n                removeDotsSpinner();\n                appendPiText(d.content);\n                break;\n            case 'tool_start':\n                handleToolStart(d.id, d.name, d.args ?? {});\n                break;\n            case 'tool_end':\n                handleToolEnd(d.id, d.result ?? '');\n                break;\n            case 'ask_user':\n                removeDotsSpinner();\n                breakPiBubble();\n                appendPiText('**' + d.question + '**');\n                window.awaitingAnswer = true;\n                break;\n            case 'system_notification':\n                appendSystemNote(d.message);\n                break;\n            case 'done':\n                finalizeWorkingBlock();\n                removeDotsSpinner();\n                break;\n            case 'error':\n                removeDotsSpinner();\n                setStatus('error', 'Error');\n                showToast('⚠ ' + d.message);\n                break;\n        }\n        scrollBottom();\n    };\n\n    ws.onclose = () => {\n        setStatus('error', 'Disconnected — retrying in 3s…');\n        ws = null;\n        wBlock = wSteps = wStart = null;\n        setTimeout(connect, 3000);\n    };\n}\n\n// ── Send message ──────────────────────────────────────────────────────\nfunction sendMessage() {\n    const text   = msgInput.value.trim();\n    const images = [...pendingImages];\n    if (!text && images.length === 0) return;\n    if (!ws || ws.readyState !== WebSocket.OPEN) { showToast('Not connected'); return; }\n\n    appendUserMessage(text, images);\n    hideCmdDropdown();\n    msgInput.value = '';\n    msgInput.style.height = 'auto';\n    pendingImages = [];\n    attBar.innerHTML = '';\n    breakPiBubble();\n    showDotsSpinner();\n\n    const payload = window.awaitingAnswer\n        ? { answer: text, message: text, images }\n        : { message: text, images };\n    if (window.awaitingAnswer) window.awaitingAnswer = false;\n    ws.send(JSON.stringify(payload));\n}\n\n// ── Command dropdown (in-webview) ─────────────────────────────────────\nconst COMMANDS = [\n    { cmd: '/clear',      desc: 'Wipe current session history' },\n    { cmd: '/compact',    desc: 'Summarize and compress session history' },\n    { cmd: '/config',     desc: 'Show current config' },\n    { cmd: '/config set', desc: 'Set a config value  (e.g. /config set provider gemini)' },\n    { cmd: '/delete',     desc: 'Delete a session' },\n    { cmd: '/help',       desc: 'Show all available commands' },\n    { cmd: '/model',      desc: 'Switch model  (e.g. /model gemini-2.5-flash)' },\n    { cmd: '/provider',   desc: 'Switch provider  (gemini or openai)' },\n    { cmd: '/session',    desc: 'Switch to a named session' },\n    { cmd: '/sessions',   desc: 'List all saved sessions' },\n];\nlet cmdIdx = 0;\nconst cmdDropdown = document.getElementById('cmd-dropdown');\n\nfunction renderCmdDropdown(filter) {\n    const filtered = COMMANDS.filter(c => c.cmd.startsWith(filter));\n    if (!filtered.length || !filter.startsWith('/')) { hideCmdDropdown(); return; }\n    cmdIdx = Math.min(cmdIdx, filtered.length - 1);\n    cmdDropdown.innerHTML = '';\n    filtered.forEach((c, i) => {\n        const item = document.createElement('div');\n        item.className = 'cmd-item' + (i === cmdIdx ? ' active' : '');\n        item.innerHTML = `<span class=\"cmd-item-name\">${c.cmd}</span><span class=\"cmd-item-desc\">${c.desc}</span>`;\n        item.onmousedown = e => {\n            e.preventDefault();\n            msgInput.value = c.cmd + ' ';\n            hideCmdDropdown();\n            msgInput.focus();\n        };\n        cmdDropdown.appendChild(item);\n    });\n    cmdDropdown.classList.add('open');\n}\nfunction hideCmdDropdown() { cmdDropdown.classList.remove('open'); cmdIdx = 0; }\n\n// ── Input events ──────────────────────────────────────────────────────\nmsgInput.addEventListener('keydown', e => {\n    if (cmdDropdown.classList.contains('open')) {\n        const filtered = COMMANDS.filter(c => c.cmd.startsWith(msgInput.value.split(' ')[0]));\n        if (e.key === 'ArrowDown') {\n            e.preventDefault();\n            cmdIdx = (cmdIdx + 1) % filtered.length;\n            renderCmdDropdown(msgInput.value.split(' ')[0]);\n            return;\n        }\n        if (e.key === 'ArrowUp') {\n            e.preventDefault();\n            cmdIdx = (cmdIdx - 1 + filtered.length) % filtered.length;\n            renderCmdDropdown(msgInput.value.split(' ')[0]);\n            return;\n        }\n        if (e.key === 'Tab' || e.key === 'Enter') {\n            if (filtered[cmdIdx]) {\n                e.preventDefault();\n                msgInput.value = filtered[cmdIdx].cmd + ' ';\n                hideCmdDropdown();\n                return;\n            }\n        }\n        if (e.key === 'Escape') { hideCmdDropdown(); return; }\n    }\n    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }\n});\n\nmsgInput.addEventListener('input', () => {\n    msgInput.style.height = 'auto';\n    msgInput.style.height = Math.min(msgInput.scrollHeight, 130) + 'px';\n    const val = msgInput.value;\n    if (val.startsWith('/') && !val.includes(' ')) {\n        cmdIdx = 0;\n        renderCmdDropdown(val);\n    } else {\n        hideCmdDropdown();\n    }\n});\n\n// ── Image paste ───────────────────────────────────────────────────────\nwindow.addEventListener('paste', e => {\n    for (const item of e.clipboardData.items) {\n        if (item.type.startsWith('image/')) {\n            const reader = new FileReader();\n            reader.onload = ev => addPendingImage(ev.target.result);\n            reader.readAsDataURL(item.getAsFile());\n        }\n    }\n});\n\nfunction addPendingImage(src) {\n    pendingImages.push(src);\n    const wrap = document.createElement('div');\n    wrap.className = 'attachment-wrap';\n    const img = document.createElement('img');\n    img.src = src; img.className = 'img-thumb';\n    img.onclick = e => { e.stopPropagation(); openModal(src); };\n    const btn = document.createElement('button');\n    btn.className = 'attachment-remove'; btn.textContent = '×';\n    btn.onclick = () => { pendingImages = pendingImages.filter(x => x !== src); wrap.remove(); };\n    wrap.appendChild(img); wrap.appendChild(btn);\n    attBar.appendChild(wrap);\n}\n\n// ── Helpers ───────────────────────────────────────────────────────────\nfunction scrollBottom() { chatBox.scrollTop = chatBox.scrollHeight; }\n\nconnect();\n<\/script>\n</body>\n</html>"}}},265(n,e,t){var o,i=this&&this.__createBinding||(Object.create?function(n,e,t,o){void 0===o&&(o=t);var i=Object.getOwnPropertyDescriptor(e,t);i&&!("get"in i?!e.__esModule:i.writable||i.configurable)||(i={enumerable:!0,get:function(){return e[t]}}),Object.defineProperty(n,o,i)}:function(n,e,t,o){void 0===o&&(o=t),n[o]=e[t]}),s=this&&this.__setModuleDefault||(Object.create?function(n,e){Object.defineProperty(n,"default",{enumerable:!0,value:e})}:function(n,e){n.default=e}),r=this&&this.__importStar||(o=function(n){return o=Object.getOwnPropertyNames||function(n){var e=[];for(var t in n)Object.prototype.hasOwnProperty.call(n,t)&&(e[e.length]=t);return e},o(n)},function(n){if(n&&n.__esModule)return n;var e={};if(null!=n)for(var t=o(n),r=0;r<t.length;r++)"default"!==t[r]&&i(e,n,t[r]);return s(e,n),e});Object.defineProperty(e,"__esModule",{value:!0}),e.activate=function(n){console.log("Pi Assistant extension is now active!");const e=new d.PiSidebarProvider(n.extensionUri);n.subscriptions.push(a.window.registerWebviewViewProvider("pi.sidebar",e)),n.subscriptions.push(a.commands.registerCommand("pi.start",()=>{a.commands.executeCommand("workbench.view.extension.pi-sidebar-view")}))},e.deactivate=function(){};const a=r(t(398)),d=t(92)},398(n){n.exports=require("vscode")}},e={},t=function t(o){var i=e[o];if(void 0!==i)return i.exports;var s=e[o]={exports:{}};return n[o].call(s.exports,s,s.exports,t),s.exports}(265),o=exports;for(var i in t)o[i]=t[i];t.__esModule&&Object.defineProperty(o,"__esModule",{value:!0})})();
+/******/ (() => { // webpackBootstrap
+/******/ 	"use strict";
+/******/ 	var __webpack_modules__ = ({
+
+/***/ "./src/PiSidebarProvider.ts"
+/*!**********************************!*\
+  !*** ./src/PiSidebarProvider.ts ***!
+  \**********************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.PiSidebarProvider = void 0;
+const vscode = __importStar(__webpack_require__(/*! vscode */ "vscode"));
+class PiSidebarProvider {
+    _extensionUri;
+    _view;
+    constructor(_extensionUri) {
+        this._extensionUri = _extensionUri;
+    }
+    resolveWebviewView(webviewView) {
+        this._view = webviewView;
+        webviewView.webview.options = {
+            enableScripts: true,
+            localResourceRoots: [this._extensionUri],
+        };
+        const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+        webviewView.webview.html = this._getHtmlForWebview(webviewView.webview, cwd);
+        webviewView.webview.onDidReceiveMessage(async (data) => {
+            if (data.type === 'show_command_picker') {
+                const cmds = data.commands ?? [];
+                if (!cmds.length) {
+                    return;
+                }
+                const picked = await vscode.window.showQuickPick(cmds.map(c => ({ label: c.cmd, description: c.desc })), { placeHolder: 'Run a Pi command…' });
+                if (picked) {
+                    this._view?.webview.postMessage({ type: 'command_selected', command: picked.label });
+                }
+            }
+        });
+    }
+    _getHtmlForWebview(_webview, cwd = '') {
+        return /* html */ `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; connect-src ws://localhost:8001;">
+<title>Pi</title>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    font-family: var(--vscode-font-family);
+    font-size: 13px;
+    color: var(--vscode-editor-foreground);
+    background: var(--vscode-editor-background);
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* ── Status bar ── */
+#status-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    min-height: 24px;
+    flex-shrink: 0;
+}
+#status-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #777;
+    flex-shrink: 0;
+    transition: background 0.3s;
+}
+#status-dot.connected { background: #4ec94e; }
+#status-dot.error     { background: #e05252; }
+
+/* ── Chat area ── */
+#chat-box {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px 10px 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* ── Message rows ── */
+.msg-row { display: flex; flex-direction: column; }
+.msg-row.user { align-items: flex-end; }
+.msg-row.pi   { align-items: flex-start; }
+
+.bubble {
+    max-width: 88%;
+    padding: 9px 13px;
+    border-radius: 14px;
+    line-height: 1.55;
+    word-break: break-word;
+    font-size: 13px;
+}
+.bubble.user {
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border-bottom-right-radius: 4px;
+}
+.bubble.pi {
+    background: var(--vscode-editorWidget-background);
+    border: 1px solid var(--vscode-panel-border);
+    border-bottom-left-radius: 4px;
+}
+
+/* Markdown inside Pi bubble */
+.bubble.pi p { margin: 0 0 6px; }
+.bubble.pi p:last-child { margin: 0; }
+.bubble.pi pre {
+    background: var(--vscode-textCodeBlock-background);
+    padding: 8px 10px;
+    border-radius: 5px;
+    overflow-x: auto;
+    margin: 6px 0;
+    font-size: 11.5px;
+    font-family: var(--vscode-editor-font-family);
+}
+.bubble.pi code {
+    background: var(--vscode-textCodeBlock-background);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 11.5px;
+    font-family: var(--vscode-editor-font-family);
+}
+.bubble.pi ul, .bubble.pi ol { padding-left: 18px; margin: 4px 0; }
+.bubble.pi h1, .bubble.pi h2, .bubble.pi h3 { margin: 8px 0 4px; font-size: 1em; }
+.bubble.pi table { border-collapse: collapse; margin: 6px 0; font-size: 12px; }
+.bubble.pi th, .bubble.pi td { border: 1px solid var(--vscode-panel-border); padding: 4px 8px; }
+
+/* Typing dots */
+.pi-dots {
+    display: inline-flex;
+    gap: 4px;
+    padding: 10px 14px;
+    background: var(--vscode-editorWidget-background);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 14px;
+    border-bottom-left-radius: 4px;
+    align-self: flex-start;
+}
+.pi-dots span {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--vscode-descriptionForeground);
+    animation: dotbounce 1.3s infinite;
+}
+.pi-dots span:nth-child(2) { animation-delay: 0.18s; }
+.pi-dots span:nth-child(3) { animation-delay: 0.36s; }
+@keyframes dotbounce {
+    0%, 80%, 100% { transform: scale(0.55); opacity: 0.35; }
+    40%            { transform: scale(1);    opacity: 1;    }
+}
+
+/* ── Working block (Codex-style collapsible) ── */
+.working-block {
+    align-self: flex-start;
+    max-width: 96%;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 10px;
+    overflow: hidden;
+    font-size: 12px;
+}
+.working-header {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 11px;
+    background: var(--vscode-editorGroupHeader-tabsBackground);
+    cursor: pointer;
+    user-select: none;
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+}
+.working-header:hover { background: var(--vscode-list-hoverBackground); }
+.w-spin {
+    display: inline-block;
+    animation: wspin 0.9s linear infinite;
+    font-size: 13px;
+}
+@keyframes wspin { to { transform: rotate(360deg); } }
+.w-elapsed { flex: 1; }
+.w-chevron { font-size: 10px; transition: transform 0.15s; }
+.w-chevron.open { transform: rotate(180deg); }
+
+.working-steps {
+    display: none;
+    flex-direction: column;
+    background: var(--vscode-editor-background);
+}
+.working-steps.open { display: flex; }
+
+.step-item {
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+    padding: 5px 12px;
+    border-top: 1px solid var(--vscode-panel-border);
+    font-size: 11.5px;
+    color: var(--vscode-editor-foreground);
+}
+.step-icon {
+    flex-shrink: 0;
+    width: 14px;
+    text-align: center;
+    font-size: 12px;
+}
+.step-icon.running { animation: wspin 0.9s linear infinite; }
+.step-name {
+    font-weight: 600;
+    color: var(--vscode-textLink-foreground);
+    margin-right: 3px;
+}
+.step-label {
+    color: var(--vscode-descriptionForeground);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 220px;
+}
+.step-time {
+    font-size: 10.5px;
+    color: var(--vscode-descriptionForeground);
+    margin-left: auto;
+    flex-shrink: 0;
+    opacity: 0.7;
+}
+.step-output {
+    padding: 3px 12px 5px 33px;
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    font-family: var(--vscode-editor-font-family);
+    white-space: pre-wrap;
+    word-break: break-all;
+    border-top: 1px solid var(--vscode-panel-border);
+    max-height: 80px;
+    overflow-y: auto;
+    opacity: 0.75;
+}
+
+/* ── Images ── */
+.msg-image {
+    max-width: 100%;
+    max-height: 220px;
+    border-radius: 7px;
+    margin-top: 6px;
+    display: block;
+    cursor: pointer;
+}
+.img-thumb {
+    height: 60px;
+    border-radius: 5px;
+    border: 1px solid var(--vscode-panel-border);
+    cursor: pointer;
+}
+.attachment-wrap { position: relative; display: inline-block; }
+.attachment-remove {
+    position: absolute; top: -5px; right: -5px;
+    width: 15px; height: 15px;
+    border-radius: 50%;
+    background: var(--vscode-badge-background);
+    color: var(--vscode-badge-foreground);
+    border: none; cursor: pointer;
+    font-size: 9px;
+    display: flex; align-items: center; justify-content: center;
+    line-height: 1;
+}
+
+/* Image modal */
+#img-modal {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.82);
+    z-index: 9999;
+    justify-content: center; align-items: center;
+}
+#img-modal.open { display: flex; }
+#img-modal img { max-width: 92%; max-height: 92%; border-radius: 8px; object-fit: contain; }
+
+/* ── Command dropdown ── */
+#cmd-dropdown {
+    display: none;
+    position: absolute;
+    bottom: calc(100% + 4px);
+    left: 0; right: 0;
+    background: var(--vscode-dropdown-background);
+    border: 1px solid var(--vscode-dropdown-border);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 -6px 16px rgba(0,0,0,0.35);
+    z-index: 150;
+    max-height: 240px;
+    overflow-y: auto;
+}
+#cmd-dropdown.open { display: block; }
+.cmd-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--vscode-panel-border);
+}
+.cmd-item:last-child { border-bottom: none; }
+.cmd-item:hover, .cmd-item.active { background: var(--vscode-list-hoverBackground); }
+.cmd-item-name {
+    font-weight: 600;
+    color: var(--vscode-textLink-foreground);
+    min-width: 88px;
+    font-size: 12.5px;
+}
+.cmd-item-desc {
+    font-size: 11.5px;
+    color: var(--vscode-descriptionForeground);
+}
+
+/* ── System note (slash command response in chat) ── */
+.system-note {
+    align-self: center;
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    padding: 1px 6px;
+    text-align: center;
+}
+
+/* ── Input area ── */
+.input-area {
+    border-top: 1px solid var(--vscode-panel-border);
+    padding: 8px;
+    position: relative;
+    flex-shrink: 0;
+}
+#attachments-bar {
+    display: flex; flex-wrap: wrap; gap: 6px; padding: 0 0 6px;
+}
+#msg-input {
+    width: 100%;
+    padding: 8px 11px;
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-input-border, transparent);
+    border-radius: 7px;
+    font-family: inherit;
+    font-size: 13px;
+    outline: none;
+    resize: none;
+    min-height: 36px;
+    max-height: 130px;
+    overflow-y: auto;
+    line-height: 1.4;
+}
+#msg-input:focus { border-color: var(--vscode-focusBorder); }
+#msg-input::placeholder { color: var(--vscode-input-placeholderForeground); }
+
+/* Toast */
+#toast {
+    position: absolute;
+    bottom: calc(100% + 5px);
+    left: 8px; right: 8px;
+    background: var(--vscode-editorWidget-background);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 12px;
+    color: var(--vscode-editor-foreground);
+    text-align: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+    z-index: 200;
+}
+#toast.visible { opacity: 1; }
+</style>
+</head>
+<body>
+
+<div id="status-bar">
+    <div id="status-dot"></div>
+    <span id="status-text">Connecting…</span>
+</div>
+
+<div id="chat-box"></div>
+
+<div id="img-modal">
+    <img id="modal-img" src="" alt="">
+</div>
+
+<div class="input-area">
+    <div id="attachments-bar"></div>
+    <div id="cmd-dropdown"></div>
+    <textarea id="msg-input" rows="1" placeholder="Ask Pi… (type / for commands)"></textarea>
+    <div id="toast"></div>
+</div>
+
+<script>
+const WORKSPACE_CWD = ${JSON.stringify(cwd)};
+const vscode = acquireVsCodeApi();
+const chatBox    = document.getElementById('chat-box');
+const msgInput   = document.getElementById('msg-input');
+const attBar     = document.getElementById('attachments-bar');
+const statusDot  = document.getElementById('status-dot');
+const statusText = document.getElementById('status-text');
+const imgModal   = document.getElementById('img-modal');
+const modalImg   = document.getElementById('modal-img');
+const toastEl    = document.getElementById('toast');
+
+let ws            = null;
+let pendingImages = [];
+
+// ── Toast ────────────────────────────────────────────────────────────
+let toastTimer = null;
+function showToast(msg) {
+    if (toastTimer) clearTimeout(toastTimer);
+    toastEl.textContent = msg;
+    toastEl.classList.add('visible');
+    toastTimer = setTimeout(() => toastEl.classList.remove('visible'), 3500);
+}
+
+// ── Status bar ────────────────────────────────────────────────────────
+function setStatus(cls, txt) {
+    statusDot.className = cls;
+    statusText.textContent = txt;
+}
+
+// ── Image modal ───────────────────────────────────────────────────────
+imgModal.addEventListener('click', () => imgModal.classList.remove('open'));
+function openModal(src) { modalImg.src = src; imgModal.classList.add('open'); }
+
+
+// ── Message helpers ───────────────────────────────────────────────────
+function appendUserMessage(text, images = []) {
+    const row = document.createElement('div');
+    row.className = 'msg-row user';
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble user';
+    if (text) {
+        const d = document.createElement('div');
+        d.textContent = text;
+        bubble.appendChild(d);
+    }
+    images.forEach(src => {
+        const img = document.createElement('img');
+        img.src = src; img.className = 'msg-image';
+        img.onclick = e => { e.stopPropagation(); openModal(src); };
+        bubble.appendChild(img);
+    });
+    row.appendChild(bubble);
+    chatBox.appendChild(row);
+    scrollBottom();
+}
+
+let piRow = null, piBubble = null, piBuffer = '';
+function ensurePiBubble() {
+    if (!piBubble) {
+        piRow = document.createElement('div');
+        piRow.className = 'msg-row pi';
+        piBubble = document.createElement('div');
+        piBubble.className = 'bubble pi';
+        piRow.appendChild(piBubble);
+        chatBox.appendChild(piRow);
+    }
+}
+function appendPiText(chunk) {
+    removeDotsSpinner();
+    ensurePiBubble();
+    piBuffer += chunk;
+    piBubble.innerHTML = (window.marked?.parse ?? (s => s))(piBuffer);
+    scrollBottom();
+}
+function breakPiBubble() { piRow = piBubble = null; piBuffer = ''; }
+
+function appendSystemNote(text) {
+    const el = document.createElement('div');
+    el.className = 'system-note';
+    el.textContent = text;
+    chatBox.appendChild(el);
+    scrollBottom();
+}
+
+// ── Typing dots ───────────────────────────────────────────────────────
+let dotsEl = null;
+function showDotsSpinner() {
+    if (dotsEl) return;
+    dotsEl = document.createElement('div');
+    dotsEl.className = 'pi-dots';
+    dotsEl.innerHTML = '<span></span><span></span><span></span>';
+    chatBox.appendChild(dotsEl);
+    scrollBottom();
+}
+function removeDotsSpinner() {
+    if (dotsEl) { dotsEl.remove(); dotsEl = null; }
+}
+
+// ── Working block (Codex-style) ───────────────────────────────────────
+let wBlock = null, wSteps = null, wStart = null, wOpen = false;
+const stepEls = {};
+const stepTimes = {};
+
+function ensureWorkingBlock() {
+    if (wBlock) return;
+    breakPiBubble();
+    removeDotsSpinner();
+    wStart = Date.now();
+    wOpen = false;
+
+    wBlock = document.createElement('div');
+    wBlock.className = 'working-block';
+
+    const hdr = document.createElement('div');
+    hdr.className = 'working-header';
+    hdr.innerHTML =
+        '<span class="w-spin">↻</span>' +
+        '<span class="w-elapsed">Working…</span>' +
+        '<span class="w-chevron">▾</span>';
+    hdr.addEventListener('click', () => {
+        wOpen = !wOpen;
+        wSteps.classList.toggle('open', wOpen);
+        hdr.querySelector('.w-chevron').classList.toggle('open', wOpen);
+    });
+
+    wSteps = document.createElement('div');
+    wSteps.className = 'working-steps';
+
+    wBlock.appendChild(hdr);
+    wBlock.appendChild(wSteps);
+    chatBox.appendChild(wBlock);
+}
+
+function handleToolStart(id, name, args) {
+    ensureWorkingBlock();
+    const label = args.command || args.path || args.pattern || args.question || name;
+    stepTimes[id] = Date.now();
+    const item = document.createElement('div');
+    item.className = 'step-item';
+    item.innerHTML =
+        \`<span class="step-icon running" id="si-\${id}">↻</span>\` +
+        \`<span><span class="step-name">\${name}</span>\` +
+        \`<span class="step-label">\${String(label).substring(0, 60)}</span></span>\` +
+        \`<span class="step-time" id="st-\${id}"></span>\`;
+    wSteps.appendChild(item);
+    stepEls[id] = item;
+    scrollBottom();
+}
+
+function handleToolEnd(id, result) {
+    const item = stepEls[id];
+    if (!item) return;
+    const icon = document.getElementById('si-' + id);
+    if (icon) { icon.textContent = '✓'; icon.classList.remove('running'); icon.style.color = '#4ec94e'; }
+    const timeEl = document.getElementById('st-' + id);
+    if (timeEl && stepTimes[id]) {
+        const ms = Date.now() - stepTimes[id];
+        timeEl.textContent = ms < 1000 ? ms + 'ms' : (ms / 1000).toFixed(1) + 's';
+    }
+    if (result) {
+        const out = document.createElement('div');
+        out.className = 'step-output';
+        out.textContent = result.length > 300 ? result.substring(0, 300) + '…' : result;
+        item.insertAdjacentElement('afterend', out);
+    }
+    delete stepEls[id];
+    delete stepTimes[id];
+    scrollBottom();
+}
+
+function finalizeWorkingBlock() {
+    if (!wBlock || !wStart) return;
+    const secs = ((Date.now() - wStart) / 1000).toFixed(1);
+    const hdr = wBlock.querySelector('.working-header');
+    if (hdr) {
+        const spin = hdr.querySelector('.w-spin');
+        if (spin) { spin.textContent = '✓'; spin.classList.remove('w-spin'); spin.style.color = '#4ec94e'; }
+        const el = hdr.querySelector('.w-elapsed');
+        if (el) el.textContent = 'Worked for ' + secs + 's';
+    }
+    wBlock = wSteps = wStart = null;
+    breakPiBubble();
+}
+
+// ── WebSocket ─────────────────────────────────────────────────────────
+function connect() {
+    setStatus('', 'Connecting…');
+    ws = new WebSocket('ws://localhost:8001/ws/chat');
+
+    ws.onopen = () => {
+        setStatus('connected', 'Pi · gemini-2.5-flash');
+        ws.send(JSON.stringify({
+            session_id: 'vscode_session',
+            provider: 'gemini',
+            model: 'gemini-2.5-flash',
+            message: '',
+            cwd: WORKSPACE_CWD
+        }));
+    };
+
+    ws.onmessage = ev => {
+        const d = JSON.parse(ev.data);
+        switch (d.type) {
+            case 'text':
+                removeDotsSpinner();
+                appendPiText(d.content);
+                break;
+            case 'tool_start':
+                handleToolStart(d.id, d.name, d.args ?? {});
+                break;
+            case 'tool_end':
+                handleToolEnd(d.id, d.result ?? '');
+                break;
+            case 'ask_user':
+                removeDotsSpinner();
+                breakPiBubble();
+                appendPiText('**' + d.question + '**');
+                window.awaitingAnswer = true;
+                break;
+            case 'system_notification':
+                appendSystemNote(d.message);
+                break;
+            case 'done':
+                finalizeWorkingBlock();
+                removeDotsSpinner();
+                break;
+            case 'error':
+                removeDotsSpinner();
+                setStatus('error', 'Error');
+                showToast('⚠ ' + d.message);
+                break;
+        }
+        scrollBottom();
+    };
+
+    ws.onclose = () => {
+        setStatus('error', 'Disconnected — retrying in 3s…');
+        ws = null;
+        wBlock = wSteps = wStart = null;
+        setTimeout(connect, 3000);
+    };
+}
+
+// ── Send message ──────────────────────────────────────────────────────
+function sendMessage() {
+    const text   = msgInput.value.trim();
+    const images = [...pendingImages];
+    if (!text && images.length === 0) return;
+    if (!ws || ws.readyState !== WebSocket.OPEN) { showToast('Not connected'); return; }
+
+    appendUserMessage(text, images);
+    hideCmdDropdown();
+    msgInput.value = '';
+    msgInput.style.height = 'auto';
+    pendingImages = [];
+    attBar.innerHTML = '';
+    breakPiBubble();
+    showDotsSpinner();
+
+    const payload = window.awaitingAnswer
+        ? { answer: text, message: text, images }
+        : { message: text, images };
+    if (window.awaitingAnswer) window.awaitingAnswer = false;
+    ws.send(JSON.stringify(payload));
+}
+
+// ── Command dropdown (in-webview) ─────────────────────────────────────
+const COMMANDS = [
+    { cmd: '/clear',      desc: 'Wipe current session history' },
+    { cmd: '/compact',    desc: 'Summarize and compress session history' },
+    { cmd: '/config',     desc: 'Show current config' },
+    { cmd: '/config set', desc: 'Set a config value  (e.g. /config set provider gemini)' },
+    { cmd: '/delete',     desc: 'Delete a session' },
+    { cmd: '/help',       desc: 'Show all available commands' },
+    { cmd: '/model',      desc: 'Switch model  (e.g. /model gemini-2.5-flash)' },
+    { cmd: '/provider',   desc: 'Switch provider  (gemini or openai)' },
+    { cmd: '/session',    desc: 'Switch to a named session' },
+    { cmd: '/sessions',   desc: 'List all saved sessions' },
+];
+let cmdIdx = 0;
+const cmdDropdown = document.getElementById('cmd-dropdown');
+
+function renderCmdDropdown(filter) {
+    const filtered = COMMANDS.filter(c => c.cmd.startsWith(filter));
+    if (!filtered.length || !filter.startsWith('/')) { hideCmdDropdown(); return; }
+    cmdIdx = Math.min(cmdIdx, filtered.length - 1);
+    cmdDropdown.innerHTML = '';
+    filtered.forEach((c, i) => {
+        const item = document.createElement('div');
+        item.className = 'cmd-item' + (i === cmdIdx ? ' active' : '');
+        item.innerHTML = \`<span class="cmd-item-name">\${c.cmd}</span><span class="cmd-item-desc">\${c.desc}</span>\`;
+        item.onmousedown = e => {
+            e.preventDefault();
+            msgInput.value = c.cmd + ' ';
+            hideCmdDropdown();
+            msgInput.focus();
+        };
+        cmdDropdown.appendChild(item);
+    });
+    cmdDropdown.classList.add('open');
+}
+function hideCmdDropdown() { cmdDropdown.classList.remove('open'); cmdIdx = 0; }
+
+// ── Input events ──────────────────────────────────────────────────────
+msgInput.addEventListener('keydown', e => {
+    if (cmdDropdown.classList.contains('open')) {
+        const filtered = COMMANDS.filter(c => c.cmd.startsWith(msgInput.value.split(' ')[0]));
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            cmdIdx = (cmdIdx + 1) % filtered.length;
+            renderCmdDropdown(msgInput.value.split(' ')[0]);
+            return;
+        }
+        if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            cmdIdx = (cmdIdx - 1 + filtered.length) % filtered.length;
+            renderCmdDropdown(msgInput.value.split(' ')[0]);
+            return;
+        }
+        if (e.key === 'Tab' || e.key === 'Enter') {
+            if (filtered[cmdIdx]) {
+                e.preventDefault();
+                msgInput.value = filtered[cmdIdx].cmd + ' ';
+                hideCmdDropdown();
+                return;
+            }
+        }
+        if (e.key === 'Escape') { hideCmdDropdown(); return; }
+    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+});
+
+msgInput.addEventListener('input', () => {
+    msgInput.style.height = 'auto';
+    msgInput.style.height = Math.min(msgInput.scrollHeight, 130) + 'px';
+    const val = msgInput.value;
+    if (val.startsWith('/') && !val.includes(' ')) {
+        cmdIdx = 0;
+        renderCmdDropdown(val);
+    } else {
+        hideCmdDropdown();
+    }
+});
+
+// ── Image paste ───────────────────────────────────────────────────────
+window.addEventListener('paste', e => {
+    for (const item of e.clipboardData.items) {
+        if (item.type.startsWith('image/')) {
+            const reader = new FileReader();
+            reader.onload = ev => addPendingImage(ev.target.result);
+            reader.readAsDataURL(item.getAsFile());
+        }
+    }
+});
+
+function addPendingImage(src) {
+    pendingImages.push(src);
+    const wrap = document.createElement('div');
+    wrap.className = 'attachment-wrap';
+    const img = document.createElement('img');
+    img.src = src; img.className = 'img-thumb';
+    img.onclick = e => { e.stopPropagation(); openModal(src); };
+    const btn = document.createElement('button');
+    btn.className = 'attachment-remove'; btn.textContent = '×';
+    btn.onclick = () => { pendingImages = pendingImages.filter(x => x !== src); wrap.remove(); };
+    wrap.appendChild(img); wrap.appendChild(btn);
+    attBar.appendChild(wrap);
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────
+function scrollBottom() { chatBox.scrollTop = chatBox.scrollHeight; }
+
+connect();
+</script>
+</body>
+</html>`;
+    }
+}
+exports.PiSidebarProvider = PiSidebarProvider;
+
+
+/***/ },
+
+/***/ "./src/extension.ts"
+/*!**************************!*\
+  !*** ./src/extension.ts ***!
+  \**************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.activate = activate;
+exports.deactivate = deactivate;
+const vscode = __importStar(__webpack_require__(/*! vscode */ "vscode"));
+const PiSidebarProvider_1 = __webpack_require__(/*! ./PiSidebarProvider */ "./src/PiSidebarProvider.ts");
+function activate(context) {
+    console.log('Pi Assistant extension is now active!');
+    const sidebarProvider = new PiSidebarProvider_1.PiSidebarProvider(context.extensionUri);
+    context.subscriptions.push(vscode.window.registerWebviewViewProvider("pi.sidebar", sidebarProvider));
+    context.subscriptions.push(vscode.commands.registerCommand('pi.start', () => {
+        vscode.commands.executeCommand('workbench.view.extension.pi-sidebar-view');
+    }));
+}
+function deactivate() { }
+
+
+/***/ },
+
+/***/ "vscode"
+/*!*************************!*\
+  !*** external "vscode" ***!
+  \*************************/
+(module) {
+
+module.exports = require("vscode");
+
+/***/ }
+
+/******/ 	});
+/************************************************************************/
+/******/ 	// The module cache
+/******/ 	var __webpack_module_cache__ = {};
+/******/ 	
+/******/ 	// The require function
+/******/ 	function __webpack_require__(moduleId) {
+/******/ 		// Check if module is in cache
+/******/ 		var cachedModule = __webpack_module_cache__[moduleId];
+/******/ 		if (cachedModule !== undefined) {
+/******/ 			return cachedModule.exports;
+/******/ 		}
+/******/ 		// Create a new module (and put it into the cache)
+/******/ 		var module = __webpack_module_cache__[moduleId] = {
+/******/ 			// no module.id needed
+/******/ 			// no module.loaded needed
+/******/ 			exports: {}
+/******/ 		};
+/******/ 	
+/******/ 		// Execute the module function
+/******/ 		if (!(moduleId in __webpack_modules__)) {
+/******/ 			delete __webpack_module_cache__[moduleId];
+/******/ 			var e = new Error("Cannot find module '" + moduleId + "'");
+/******/ 			e.code = 'MODULE_NOT_FOUND';
+/******/ 			throw e;
+/******/ 		}
+/******/ 		__webpack_modules__[moduleId].call(module.exports, module, module.exports, __webpack_require__);
+/******/ 	
+/******/ 		// Return the exports of the module
+/******/ 		return module.exports;
+/******/ 	}
+/******/ 	
+/************************************************************************/
+/******/ 	
+/******/ 	// startup
+/******/ 	// Load entry module and return exports
+/******/ 	// This entry module is referenced by other modules so it can't be inlined
+/******/ 	var __webpack_exports__ = __webpack_require__("./src/extension.ts");
+/******/ 	var __webpack_export_target__ = exports;
+/******/ 	for(var __webpack_i__ in __webpack_exports__) __webpack_export_target__[__webpack_i__] = __webpack_exports__[__webpack_i__];
+/******/ 	if(__webpack_exports__.__esModule) Object.defineProperty(__webpack_export_target__, "__esModule", { value: true });
+/******/ 	
+/******/ })()
+;
+//# sourceMappingURL=extension.js.map

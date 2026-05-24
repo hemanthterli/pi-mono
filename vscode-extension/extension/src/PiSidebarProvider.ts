@@ -11,7 +11,8 @@ export class PiSidebarProvider implements vscode.WebviewViewProvider {
             enableScripts: true,
             localResourceRoots: [this._extensionUri],
         };
-        webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
+        const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+        webviewView.webview.html = this._getHtmlForWebview(webviewView.webview, cwd);
 
         webviewView.webview.onDidReceiveMessage(async (data) => {
             if (data.type === 'show_command_picker') {
@@ -28,7 +29,7 @@ export class PiSidebarProvider implements vscode.WebviewViewProvider {
         });
     }
 
-    private _getHtmlForWebview(_webview: vscode.Webview): string {
+    private _getHtmlForWebview(_webview: vscode.Webview, cwd: string = ''): string {
         return /* html */`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -395,6 +396,7 @@ body {
 </div>
 
 <script>
+const WORKSPACE_CWD = ${JSON.stringify(cwd)};
 const vscode = acquireVsCodeApi();
 const chatBox    = document.getElementById('chat-box');
 const msgInput   = document.getElementById('msg-input');
@@ -589,7 +591,8 @@ function connect() {
             session_id: 'vscode_session',
             provider: 'gemini',
             model: 'gemini-2.5-flash',
-            message: ''
+            message: '',
+            cwd: WORKSPACE_CWD
         }));
     };
 
